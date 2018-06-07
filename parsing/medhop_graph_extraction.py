@@ -1,4 +1,3 @@
-import networkx as nx
 import numpy as np
 import operator
 import pandas as pd
@@ -8,14 +7,12 @@ from itertools import chain
 from itertools import combinations
 from nltk.tokenize import sent_tokenize
 from nltk.tokenize import WordPunctTokenizer
+from parsing.special_tokens import *
 from tqdm import tqdm
 
 word_tokenizer = WordPunctTokenizer()
 target_regex = re.compile('^interacts_with (.+)\?$')
 biomed_entity = re.compile("[ABCDEFGHIKMOPQS][0-9,A-Z]+[0-9]+")
-ENT_1 = 'ent_1'
-ENT_2 = 'ent_2'
-ENT_X = 'ent_x'
 
 
 def extract_target_and_relation(df):
@@ -142,34 +139,6 @@ def extract_target_and_relation(df):
     df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
 
 
-def get_paths(graph_info, sources, target, cutoff=8):
-    if type(sources) is not list:
-        sources = [sources]
-
-    G = nx.from_numpy_matrix(graph_info[1])
-    all_paths = []
-    for source in sources:
-        if source not in graph_info[0] or target not in graph_info[0]:
-            print('Source or target not in adjacency matrix')
-        else:
-            # TODO!: Figure a way of setting the cutoff point for path lengths.
-            paths = nx.all_simple_paths(G, graph_info[0][source], graph_info[0][target], cutoff=cutoff)
-            paths = list(paths)
-            entity_rel_paths = []
-            for p in paths:
-                entity_rel_path = []
-                for e1, e2 in zip(p[:-1], p[1:]):
-                    e1_str = graph_info[3][e1]
-                    e2_str = graph_info[3][e2]
-                    rel = graph_info[2][(e1, e2)]
-                    # TODO!: Need to deal with multiple relations between the same entities!
-                    entity_rel_path.append((e1_str, rel[0]))
-                entity_rel_path.append((e2_str, []))
-                entity_rel_paths.append(entity_rel_path)
-            all_paths += entity_rel_paths
-    return all_paths
-
-
 def preprocess_medhop(df):
     extract_graph(df)
     print('Extracted graph data')
@@ -182,4 +151,3 @@ if __name__ == "__main__":
     df = pd.read_json('./qangaroo_v1.1/medhop/train.json', orient='records')
     df = preprocess_medhop(df)
     df.to_json('train_with_graph.json')
-
