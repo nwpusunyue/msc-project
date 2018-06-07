@@ -32,14 +32,12 @@ def get_indexed_paths(q_relation_paths,
     :return: indexed relation paths: [total_paths, max_path_length, max_rel_length]
              indexed entity paths: [total_paths, max_path_length]
              indexed_target_relations: [total_paths]
-             num_partitions: equal to number of queries
              path_partitions: [total_paths] - specifies for each path which query it belongs to
              path_lengths: [total_paths] - num of  nodes per path
              num_words: [total_paths, max_path_length] - num of words for each relation in each path
 
     '''
     total_paths = np.sum([len(rel_paths) for rel_paths in q_relation_paths])
-    num_partitions = len(q_relation_paths)
     # Any path beyond the actual number of paths for a query will have a length of 0,
     # hence will not be run through the RNN and its hidden state will be 0.
     path_lengths = np.zeros([total_paths])
@@ -83,7 +81,6 @@ def get_indexed_paths(q_relation_paths,
     return (indexed_relation_paths,
             indexed_entity_paths,
             indexed_target_relations,
-            num_partitions,
             path_partitions,
             path_lengths,
             num_words)

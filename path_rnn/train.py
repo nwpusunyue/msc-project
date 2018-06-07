@@ -1,14 +1,14 @@
 import pandas as pd
 import tensorflow as tf
-from embeddings import load_embedding_matrix
-from path_rnn_unstacked import PathRNN
-from tensor_generator_unstacked import get_indexed_paths, get_labels
+from path_rnn.embeddings import load_embedding_matrix
+from path_rnn.model.path_rnn import PathRNN
+from path_rnn.tensor_generator import get_indexed_paths, get_indexed_target_relations, get_labels
 from util import get_target_relations_vocab
 
 
 def build_graph(emb_matrix,
                 target_relation_vocab,
-                num_partitions,
+                max_paths,
                 max_path_length,
                 max_relation_length,
                 hidden_size,
@@ -25,7 +25,7 @@ def build_graph(emb_matrix,
                                                                                           dtype=tf.float64),
                                                 dtype=tf.float64,
                                                 trainable=True)
-    model = PathRNN(num_partitions=num_partitions,
+    model = PathRNN(max_paths=max_paths,
                     max_path_length=max_path_length,
                     max_relation_length=max_relation_length,
                     rnn_cell=tf.contrib.rnn.LSTMCell(hidden_size),
@@ -40,18 +40,11 @@ def build_graph(emb_matrix,
     return model, train_step
 
 
-def build_feed_dict(model,
-                    relation_seq,
-                    entity_seq,
-                    path_partitions,
-                    path_lengths,
-                    num_words,
-                    target_relations,
-                    labels):
+def build_feed_dict(model, relation_seq, entity_seq, num_paths, path_lengths, num_words, target_relations, labels):
     return {
         model.placeholders['relation_seq']: relation_seq,
         model.placeholders['entity_seq']: entity_seq,
-        model.placeholders['path_partitions']: path_partitions,
+        model.placeholders['num_paths']: num_paths,
         model.placeholders['path_lengths']: path_lengths,
         model.placeholders['num_words']: num_words,
         model.placeholders['target_rel']: target_relations,
@@ -60,7 +53,7 @@ def build_feed_dict(model,
 
 
 def train(dataset,
-          num_partitions,
+          max_paths,
           max_path_length,
           max_relation_length,
           hidden_size,
@@ -73,24 +66,21 @@ def train(dataset,
 
     (rel_seq,
      entity_seq,
-     target_relations,
-     num_partitions,
-     path_partitions,
+     num_paths,
      path_lengths,
-     num_words) = get_indexed_paths(q_relation_paths=dataset['relation_paths'],
-                                    q_entity_paths=dataset['entity_paths'],
-                                    target_relations=dataset['relation'],
-                                    relation_token_vocab=vocab,
-                                    entity_vocab=vocab,
-                                    target_relation_vocab=target_relation_vocab,
-                                    max_path_length=max_path_length,
-                                    max_relation_length=max_relation_length)
-    print(num_partitions)
+     num_words) = get_indexed_paths(dataset['relation_paths'],
+                                    dataset['entity_paths'],
+                                    vocab,
+                                    max_paths,
+                                    max_path_length,
+                                    max_relation_length)
+    target_relations = get_indexed_target_relations(dataset['relation'],
+                                                    target_relation_vocab)
     labels = get_labels(dataset['label'])
 
     model, train_step = build_graph(emb_matrix=emb_matrix,
                                     target_relation_vocab=target_relation_vocab,
-                                    num_partitions=num_partitions,
+                                    max_paths=max_paths,
                                     max_path_length=max_path_length,
                                     max_relation_length=max_relation_length,
                                     hidden_size=hidden_size,
@@ -101,21 +91,21 @@ def train(dataset,
             train_loss, train_prob, _ = sess.run([model.loss,
                                                   model.prob,
                                                   train_step],
-                                                 feed_dict=build_feed_dict(model=model,
-                                                                           relation_seq=rel_seq,
-                                                                           entity_seq=entity_seq,
-                                                                           path_partitions=path_partitions,
-                                                                           path_lengths=path_lengths,
-                                                                           num_words=num_words,
-                                                                           target_relations=target_relations,
-                                                                           labels=labels))
+                                                 feed_dict=build_feed_dict(model,
+                                                                           rel_seq,
+                                                                           entity_seq,
+                                                                           num_paths,
+                                                                           path_lengths,
+                                                                           num_words,
+                                                                           target_relations,
+                                                                           labels))
             print('Epoch: {} Loss={} Probabilities={}'.format(i, train_loss, train_prob))
 
 
 if __name__ == '__main__':
-    dataset = pd.read_json('dummy_dataset.json').loc[:3]
+    dataset = pd.read_json('dummy_dataset.json').loc[:4]
     train(dataset=dataset,
-          num_partitions=len(dataset),
+          max_paths=10,
           max_path_length=9,
           max_relation_length=200,
           hidden_size=150,

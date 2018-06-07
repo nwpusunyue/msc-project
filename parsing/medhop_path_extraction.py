@@ -36,10 +36,8 @@ def get_paths(graph_info, source, target, cutoff=None):
                 entity_path.append(e1_str)
                 # TODO!: Need to deal with multiple relations between the same entities!
                 rel_path.append(rel[0])
-
             entity_path.append(e2_str)
             rel_path.append([END])
-
             entity_paths.append(entity_path)
             rel_paths.append(rel_path)
 
@@ -56,6 +54,9 @@ def extract_paths_dataset(df, cutoff=None):
         'relation_paths': [],
         'label': []
     }
+    positive_ex_cnt = 0
+    negative_ex_cnt = 0
+    total = 0
     for index, row in tqdm(df.iterrows()):
         question_id = row['id']
         target = row['target']
@@ -66,6 +67,7 @@ def extract_paths_dataset(df, cutoff=None):
         non_answer = [c for c in row['candidates'] if c != answer]
 
         try:
+            total += 1
             # positive example
             entity_paths, rel_paths = get_paths(graph, answer, target, cutoff=cutoff)
 
@@ -76,31 +78,39 @@ def extract_paths_dataset(df, cutoff=None):
             dataset['entity_paths'].append(entity_paths)
             dataset['relation_paths'].append(rel_paths)
             dataset['label'].append(1)
-        except EntityNotFoundException as e:
-            print(e)
+        except (nx.NetworkXNoPath, EntityNotFoundException) as e:
+            print(type(e))
+            positive_ex_cnt += 1
             pass
 
-    # negative examples
-    for src in non_answer:
-        try:
-            entity_paths, rel_paths = get_paths(graph, src, target, cutoff=cutoff)
+        # negative examples
+        for src in non_answer:
+            total += 1
+            try:
+                entity_paths, rel_paths = get_paths(graph, src, target, cutoff=cutoff)
 
-            dataset['id'].append(question_id)
-            dataset['source'].append(answer)
-            dataset['target'].append(target)
-            dataset['relation'].append(relation)
-            dataset['entity_paths'].append(entity_paths)
-            dataset['relation_paths'].append(rel_paths)
-            dataset['label'].append(0)
-        except Exception as e:
-            print(e)
-            pass
+                dataset['id'].append(question_id)
+                dataset['source'].append(answer)
+                dataset['target'].append(target)
+                dataset['relation'].append(relation)
+                dataset['entity_paths'].append(entity_paths)
+                dataset['relation_paths'].append(rel_paths)
+                dataset['label'].append(0)
+            except Exception as e:
+                print(type(e))
+                negative_ex_cnt += 1
+                pass
 
+    print('Total examples: {}\nPositive example failures: '
+          '{}\nNegative example failures: {}\nTotal with path: {}'.format(total,
+                                                                          positive_ex_cnt,
+                                                                          negative_ex_cnt,
+                                                                          len(dataset['id'])))
     return dataset
 
 
 if __name__ == "__main__":
     df = pd.read_json('train_with_graph.json')
-    train_dataset = extract_paths_dataset(df[:1])
+    train_dataset = extract_paths_dataset(df)
     with open("dummy_dataset.json", "w") as text_file:
         text_file.write(json.dumps(train_dataset))
