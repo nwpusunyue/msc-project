@@ -2,7 +2,7 @@ import pandas as pd
 import tensorflow as tf
 from path_rnn.embeddings import load_embedding_matrix
 from path_rnn.model.path_rnn_unstacked import PathRNN
-from path_rnn.tensor_generator_unstacked import get_indexed_paths, get_labels
+from path_rnn.batch_generator import BatchGenerator
 from util import get_target_relations_vocab
 
 
@@ -60,63 +60,95 @@ def build_feed_dict(model,
 
 
 def train(dataset,
-          num_partitions,
           max_path_length,
           max_relation_length,
           hidden_size,
           learning_rate,
           batch_size,
-          epochs):
+          epochs,
+          sess_config):
     vocab, emb_matrix = load_embedding_matrix(embedding_size=100,
                                               word2vec_path='medhop_word2vec')
     # TODO: this vocab must be subsequently stored for test time
     target_relation_vocab = get_target_relations_vocab(dataset['relation'])
 
-    (rel_seq,
-     entity_seq,
-     target_relations,
-     path_partitions,
-     path_lengths,
-     num_words) = get_indexed_paths(q_relation_paths=dataset['relation_paths'],
-                                    q_entity_paths=dataset['entity_paths'],
-                                    target_relations=dataset['relation'],
-                                    relation_token_vocab=vocab,
-                                    entity_vocab=vocab,
-                                    target_relation_vocab=target_relation_vocab,
-                                    max_path_length=max_path_length,
-                                    max_relation_length=max_relation_length)
-    labels = get_labels(dataset['label'])
+    batch_generator = BatchGenerator(dataset=dataset,
+                                     relation_token_vocab=vocab,
+                                     entity_vocab=vocab,
+                                     target_relation_vocab=target_relation_vocab,
+                                     max_path_length=max_path_length,
+                                     max_relation_length=max_relation_length,
+                                     batch_size=batch_size,
+                                     test_prop=0.2)
 
     model, train_step = build_graph(emb_matrix=emb_matrix,
                                     target_relation_vocab=target_relation_vocab,
-                                    num_partitions=num_partitions,
+                                    num_partitions=batch_size,
                                     max_path_length=max_path_length,
                                     max_relation_length=max_relation_length,
                                     hidden_size=hidden_size,
                                     learning_rate=learning_rate)
 
-    with tf.train.MonitoredTrainingSession() as sess:
-        for i in range(epochs):
-            train_loss, train_prob, _ = sess.run([model.loss,
-                                                  model.prob,
-                                                  train_step],
-                                                 feed_dict=build_feed_dict(model=model,
-                                                                           relation_seq=rel_seq,
-                                                                           entity_seq=entity_seq,
-                                                                           path_partitions=path_partitions,
-                                                                           path_lengths=path_lengths,
-                                                                           num_words=num_words,
-                                                                           target_relations=target_relations,
-                                                                           labels=labels))
-            print('Epoch: {} Loss={}'.format(i, train_loss, train_prob, labels))
+    with tf.train.MonitoredTrainingSession(config=sess_config) as sess:
+        step = 0
+        check_period = 10
+        while batch_generator.train_idxs_generator.epochs_completed < epochs:
+            step += 1
+            (batch_rel_seq,
+             batch_ent_seq,
+             batch_target_relations,
+             batch_partitions,
+             batch_path_lengths,
+             batch_num_words,
+             batch_labels) = batch_generator.get_batch()
+            train_loss, _ = sess.run([model.loss,
+                                      train_step],
+                                     feed_dict=build_feed_dict(model=model,
+                                                               relation_seq=batch_rel_seq,
+                                                               entity_seq=batch_ent_seq,
+                                                               path_partitions=batch_partitions,
+                                                               path_lengths=batch_path_lengths,
+                                                               num_words=batch_num_words,
+                                                               target_relations=batch_target_relations,
+                                                               labels=batch_labels))
+
+            print('Epoch: {} Step: {} Loss={}'.format(batch_generator.train_idxs_generator.epochs_completed,
+                                                      step,
+                                                      train_loss))
+            if step % check_period == 0:
+                total_test_loss = 0
+                for _ in range(int(batch_generator.test_idxs_generator.total_batches)):
+                    (test_rel_seq,
+                     test_ent_seq,
+                     test_target_relations,
+                     test_partitions,
+                     test_path_lengths,
+                     test_num_words,
+                     test_labels) = batch_generator.get_batch(test=True)
+                    test_loss = sess.run([model.loss],
+                                         feed_dict=build_feed_dict(model=model,
+                                                                   relation_seq=test_rel_seq,
+                                                                   entity_seq=test_ent_seq,
+                                                                   path_partitions=test_partitions,
+                                                                   path_lengths=test_path_lengths,
+                                                                   num_words=test_num_words,
+                                                                   target_relations=test_target_relations,
+                                                                   labels=test_labels)
+                                         )
+                    total_test_loss += test_loss[0]
+                print('Epoch: {} Step: {} Test Loss={}'.format(batch_generator.train_idxs_generator.epochs_completed,
+                                                               step,
+                                                               total_test_loss
+                                                               / batch_generator.test_idxs_generator.total_batches))
 
 
 if __name__ == '__main__':
-    dataset = pd.read_json('dummy_dataset.json').loc[:10]
+    dataset = pd.read_json('dummy_dataset.json')
     train(dataset=dataset,
-          num_partitions=len(dataset),
-          max_path_length=9,
-          max_relation_length=200,
+          max_path_length=20,
+          max_relation_length=500,
           hidden_size=150,
-          learning_rate=1e-2,
-          epochs=100)
+          learning_rate=1e-3,
+          epochs=100,
+          batch_size=32,
+          sess_config=tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0')))

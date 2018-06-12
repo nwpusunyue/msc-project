@@ -21,9 +21,9 @@ def get_indexed_paths(q_relation_paths,
     :param labels: list containing the labels for each query
     :param relation_token_vocab: dict with keys: words, values: indices of the words,
     corresponding to rows in the embedding matr
-    :param relation_token_vocab: dict with keys: words, values: indices of the words,
+    :param entity_vocab: dict with keys: words, values: indices of the words,
     corresponding to rows in the embedding matr
-    :param relation_token_vocab: dict with keys: words, values: indices of the words,
+    :param target_relation_vocab: dict with keys: words, values: indices of the words,
     corresponding to rows in the embedding matr
     :param max_path_length: max. number of relations and entities per path (including final dummy relation); paths with
     more nodes will be discarded
@@ -37,6 +37,7 @@ def get_indexed_paths(q_relation_paths,
              num_words: [total_paths, max_path_length] - num of words for each relation in each path
 
     '''
+    path_partitions = np.zeros((len(q_relation_paths), 2), dtype=int)
     total_paths = np.sum([len(rel_paths) for rel_paths in q_relation_paths])
     # Any path beyond the actual number of paths for a query will have a length of 0,
     # hence will not be run through the RNN and its hidden state will be 0.
@@ -46,7 +47,6 @@ def get_indexed_paths(q_relation_paths,
     # this will yield 0, since [PAD] has a 0-filled embd. vector
     num_words = np.ones([total_paths,
                          max_path_length])
-    path_partitions = np.zeros([total_paths])
 
     indexed_relation_paths = np.full(shape=[total_paths,
                                             max_path_length,
@@ -61,10 +61,9 @@ def get_indexed_paths(q_relation_paths,
     for query_idx, (relation_paths, entity_paths, target_relation) in enumerate(zip(q_relation_paths,
                                                                                     q_entity_paths,
                                                                                     target_relations)):
-
+        partition_start = path_idx
         for (rel_path, ent_path) in zip(relation_paths,
                                         entity_paths):
-            path_partitions[path_idx] = query_idx
             path_lengths[path_idx] = len(rel_path)
             indexed_target_relations[path_idx] = target_relation_vocab[target_relation]
 
@@ -78,6 +77,9 @@ def get_indexed_paths(q_relation_paths,
                     indexed_relation_paths[path_idx, rel_idx, word_idx] = relation_token_vocab[word] \
                         if word in relation_token_vocab else relation_token_vocab[UNK]
             path_idx += 1
+        partition_end = path_idx
+        path_partitions[query_idx, 0] = partition_start
+        path_partitions[query_idx, 1] = partition_end
     return (indexed_relation_paths,
             indexed_entity_paths,
             indexed_target_relations,

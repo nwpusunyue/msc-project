@@ -3,24 +3,32 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from parsing.special_tokens import *
+from parsing.path_search import shortest_paths, shortest_paths_plus_threshold, all_paths
 from tqdm import tqdm
+
+path_search_method = {
+    'shortest': shortest_paths,
+    'shortest_plus': shortest_paths_plus_threshold,
+    'all': all_paths
+}
 
 
 class EntityNotFoundException(Exception):
     pass
 
 
-def get_paths(graph_info, source, target, cutoff=None):
+def get_paths(graph_info, source, target, path_search_method_name, cutoff=None):
     G = nx.from_numpy_matrix(np.array(graph_info[1]))
 
     if source not in graph_info[0] or target not in graph_info[0]:
         raise EntityNotFoundException('Source or target not in adjacency matrix')
     else:
         # TODO!: Figure a way of setting the cutoff point for path lengths.
-        if cutoff is None:
-            paths = nx.all_shortest_paths(G, graph_info[0][source], graph_info[0][target])
-        else:
-            paths = nx.all_simple_paths(G, graph_info[0][source], graph_info[0][target], cutoff=cutoff)
+        paths = path_search_method[path_search_method_name](G,
+                                                            graph_info[0][source],
+                                                            graph_info[0][target],
+                                                            cutoff=cutoff
+                                                            )
         paths = list(paths)
 
         entity_paths = []
@@ -44,7 +52,7 @@ def get_paths(graph_info, source, target, cutoff=None):
     return entity_paths, rel_paths
 
 
-def extract_paths_dataset(df, cutoff=None):
+def extract_paths_dataset(df, path_search_method_name, cutoff=None):
     dataset = {
         'id': [],
         'source': [],
@@ -69,7 +77,11 @@ def extract_paths_dataset(df, cutoff=None):
         try:
             total += 1
             # positive example
-            entity_paths, rel_paths = get_paths(graph, answer, target, cutoff=cutoff)
+            entity_paths, rel_paths = get_paths(graph,
+                                                answer,
+                                                target,
+                                                path_search_method_name=path_search_method_name,
+                                                cutoff=cutoff)
 
             dataset['id'].append(question_id)
             dataset['source'].append(answer)
@@ -87,7 +99,11 @@ def extract_paths_dataset(df, cutoff=None):
         for src in non_answer:
             total += 1
             try:
-                entity_paths, rel_paths = get_paths(graph, src, target, cutoff=cutoff)
+                entity_paths, rel_paths = get_paths(graph,
+                                                    src,
+                                                    target,
+                                                    cutoff=cutoff,
+                                                    path_search_method_name=path_search_method_name)
 
                 dataset['id'].append(question_id)
                 dataset['source'].append(answer)
@@ -111,6 +127,6 @@ def extract_paths_dataset(df, cutoff=None):
 
 if __name__ == "__main__":
     df = pd.read_json('train_with_graph.json')
-    train_dataset = extract_paths_dataset(df)
+    train_dataset = extract_paths_dataset(df, path_search_method_name='shortest_plus', cutoff=1)
     with open("dummy_dataset.json", "w") as text_file:
         text_file.write(json.dumps(train_dataset))
