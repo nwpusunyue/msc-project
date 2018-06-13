@@ -98,26 +98,32 @@ class IndexGenerator:
                  idxs,
                  batch_size,
                  permute):
-        self.idxs = idxs
-        self.batch_size = batch_size
-        self.total_batches = np.floor(len(self.idxs) / self.batch_size)
-        self.size = self.batch_size * self.total_batches
-        self.permute = permute
-        self.epochs_completed = 0
-        self.current_batch = 0
+        if len(idxs) == 0:
+            self.size = 0
+            self.total_batches = 0
+        else:
+            self.idxs = idxs
+            self.batch_size = batch_size
+            self.total_batches = np.floor(len(self.idxs) / self.batch_size)
+            self.size = self.batch_size * self.total_batches
+            self.permute = permute
+            self.epochs_completed = 0
+            self.current_batch = 0
 
-        if self.permute:
-            self.idxs = np.random.permutation(idxs)
+            if self.permute:
+                self.idxs = np.random.permutation(idxs)
 
     def get_batch_idxs(self):
-        if self.current_batch < self.total_batches:
+        if self.total_batches == 0:
+            return []
+        else:
             batch_idxs = self.idxs[self.current_batch * self.batch_size:(self.current_batch + 1) * self.batch_size]
             self.current_batch += 1
-        else:
-            if self.permute:
-                self.idxs = np.random.permutation(self.idxs)
-            self.current_batch = 0
-            self.epochs_completed += 1
-            batch_idxs = self.idxs[self.current_batch * self.batch_size:(self.current_batch + 1) * self.batch_size]
+
+            if self.current_batch == self.total_batches:
+                if self.permute:
+                    self.idxs = np.random.permutation(self.idxs)
+                self.current_batch = 0
+                self.epochs_completed += 1
 
         return batch_idxs

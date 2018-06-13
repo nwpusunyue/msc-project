@@ -66,6 +66,7 @@ def train(dataset,
           learning_rate,
           batch_size,
           epochs,
+          test_prop,
           sess_config):
     vocab, emb_matrix = load_embedding_matrix(embedding_size=100,
                                               word2vec_path='medhop_word2vec')
@@ -79,7 +80,7 @@ def train(dataset,
                                      max_path_length=max_path_length,
                                      max_relation_length=max_relation_length,
                                      batch_size=batch_size,
-                                     test_prop=0.2)
+                                     test_prop=test_prop)
 
     model, train_step = build_graph(emb_matrix=emb_matrix,
                                     target_relation_vocab=target_relation_vocab,
@@ -88,10 +89,14 @@ def train(dataset,
                                     max_relation_length=max_relation_length,
                                     hidden_size=hidden_size,
                                     learning_rate=learning_rate)
+    print('Total train batches: {} Total test batches: {}'.format(batch_generator.train_idxs_generator.total_batches,
+                                                                  batch_generator.test_idxs_generator.total_batches))
 
     with tf.train.MonitoredTrainingSession(config=sess_config) as sess:
         step = 0
-        check_period = 10
+        check_period = batch_generator.train_idxs_generator.total_batches
+        total_epoch_loss = 0
+
         while batch_generator.train_idxs_generator.epochs_completed < epochs:
             step += 1
             (batch_rel_seq,
@@ -111,11 +116,15 @@ def train(dataset,
                                                                num_words=batch_num_words,
                                                                target_relations=batch_target_relations,
                                                                labels=batch_labels))
+            total_epoch_loss += train_loss
 
-            print('Epoch: {} Step: {} Loss={}'.format(batch_generator.train_idxs_generator.epochs_completed,
-                                                      step,
-                                                      train_loss))
-            if step % check_period == 0:
+            if step % batch_generator.train_idxs_generator.total_batches == 0:
+                print('Epoch: {} Step: {} Loss={}'.format(batch_generator.train_idxs_generator.epochs_completed,
+                                                          step,
+                                                          total_epoch_loss
+                                                          / batch_generator.train_idxs_generator.total_batches))
+                total_epoch_loss = 0
+            if step % check_period == 0 and batch_generator.test_idxs_generator.total_batches > 0:
                 total_test_loss = 0
                 for _ in range(int(batch_generator.test_idxs_generator.total_batches)):
                     (test_rel_seq,
@@ -136,19 +145,24 @@ def train(dataset,
                                                                    labels=test_labels)
                                          )
                     total_test_loss += test_loss[0]
-                print('Epoch: {} Step: {} Test Loss={}'.format(batch_generator.train_idxs_generator.epochs_completed,
+
+                print(
+                    'Epoch: {} Step: {} Test Loss={}\n'.format(batch_generator.train_idxs_generator.epochs_completed,
                                                                step,
                                                                total_test_loss
                                                                / batch_generator.test_idxs_generator.total_batches))
 
 
 if __name__ == '__main__':
-    dataset = pd.read_json('dummy_dataset.json')
+    dataset = pd.read_json('dummy_docs.json')
+    print('Tuples count: {}'.format(len(dataset)))
+    #tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0'))
     train(dataset=dataset,
-          max_path_length=20,
+          max_path_length=5,
           max_relation_length=500,
-          hidden_size=150,
+          hidden_size=50,
           learning_rate=1e-3,
           epochs=100,
-          batch_size=32,
-          sess_config=tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0')))
+          batch_size=10,
+          test_prop=0.1,
+          sess_config=None)

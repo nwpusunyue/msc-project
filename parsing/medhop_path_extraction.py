@@ -17,7 +17,7 @@ class EntityNotFoundException(Exception):
     pass
 
 
-def get_paths(graph_info, source, target, path_search_method_name, cutoff=None):
+def get_paths(graph_info, source, target, path_search_method_name, cutoff=None, limit=None):
     G = nx.from_numpy_matrix(np.array(graph_info[1]))
 
     if source not in graph_info[0] or target not in graph_info[0]:
@@ -30,17 +30,22 @@ def get_paths(graph_info, source, target, path_search_method_name, cutoff=None):
                                                             cutoff=cutoff
                                                             )
         paths = list(paths)
+        if limit is not None and limit < len(paths):
+            idxs = np.random.choice(np.arange(0, len(paths)), size=limit, replace=False)
+        else:
+            idxs = np.arange(0, len(paths))
 
         entity_paths = []
         rel_paths = []
-        for p in paths:
+        for idx in idxs:
+            p = paths[idx]
             entity_path = []
             rel_path = []
             for e1, e2 in zip(p[:-1], p[1:]):
                 e1_str = graph_info[3][e1]
                 e2_str = graph_info[3][e2]
 
-                rel = graph_info[2][str((e1, e2))]
+                rel = graph_info[2][(e1, e2)]
                 entity_path.append(e1_str)
                 # TODO!: Need to deal with multiple relations between the same entities!
                 rel_path.append(rel[0])
@@ -52,7 +57,7 @@ def get_paths(graph_info, source, target, path_search_method_name, cutoff=None):
     return entity_paths, rel_paths
 
 
-def extract_paths_dataset(df, path_search_method_name, cutoff=None):
+def extract_paths_dataset(df, path_search_method_name, cutoff=None, limit=None):
     dataset = {
         'id': [],
         'source': [],
@@ -81,7 +86,8 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None):
                                                 answer,
                                                 target,
                                                 path_search_method_name=path_search_method_name,
-                                                cutoff=cutoff)
+                                                cutoff=cutoff,
+                                                limit=limit)
 
             dataset['id'].append(question_id)
             dataset['source'].append(answer)
@@ -106,7 +112,7 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None):
                                                     path_search_method_name=path_search_method_name)
 
                 dataset['id'].append(question_id)
-                dataset['source'].append(answer)
+                dataset['source'].append(src)
                 dataset['target'].append(target)
                 dataset['relation'].append(relation)
                 dataset['entity_paths'].append(entity_paths)
@@ -117,11 +123,13 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None):
                 negative_ex_cnt += 1
                 pass
 
-    print('Total examples: {}\nPositive example failures: '
-          '{}\nNegative example failures: {}\nTotal with path: {}'.format(total,
-                                                                          positive_ex_cnt,
-                                                                          negative_ex_cnt,
-                                                                          len(dataset['id'])))
+    print('Total examples: {}\n'
+          'Positive example failures: {}\n'
+          'Negative example failures: {}\n'
+          'Total with path: {}'.format(total,
+                                       positive_ex_cnt,
+                                       negative_ex_cnt,
+                                       len(dataset['id'])))
     return dataset
 
 

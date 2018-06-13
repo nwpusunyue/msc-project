@@ -1,8 +1,6 @@
 import numpy as np
 import operator
 import pandas as pd
-import os
-import pickle
 import re
 from itertools import chain
 from itertools import combinations
@@ -30,12 +28,12 @@ def extract_target_and_relation(df):
     df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
 
 
-def extract_entities(sentence, biomed_entities=None):
+def extract_entities(text, biomed_entities=None):
     unique_entities = {}
     entity_idxs = []
 
-    tokenized_sentence = word_tokenizer.tokenize(sentence)
-    for i, t in enumerate(tokenized_sentence):
+    tokenized_text = word_tokenizer.tokenize(text)
+    for i, t in enumerate(tokenized_text):
         if (biomed_entities is None and t in biomed_entities) or biomed_entity.match(t):
             entity_idxs.append(i)
             if t not in unique_entities:
@@ -43,14 +41,17 @@ def extract_entities(sentence, biomed_entities=None):
             else:
                 unique_entities[t].append(i)
     for entity_idx in entity_idxs:
-        tokenized_sentence[entity_idx] = ENT_X
+        tokenized_text[entity_idx] = ENT_X
     # return list of (entity, [list_of_occurences_indices]) tuples sorted by the index of the first occurence
-    return (tokenized_sentence, sorted([(k, v) for k, v in unique_entities.items()], key=lambda x: x[0][1]))
+    return (tokenized_text, sorted([(k, v) for k, v in unique_entities.items()], key=lambda x: x[0][1]))
 
 
-def extract_medhop_instances(document, biomed_entities=None):
-    document_instances = list(filter(lambda x: len(x[1]) > 1,
-                                     [extract_entities(s, biomed_entities) for s in sent_tokenize(document)]))
+def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True):
+    if sentence_wise:
+        document_instances = list(filter(lambda x: len(x[1]) > 1,
+                                         [extract_entities(s, biomed_entities) for s in sent_tokenize(document)]))
+    else:
+        document_instances = [extract_entities(document, biomed_entities)]
     return document_instances
 
 
@@ -69,17 +70,22 @@ def extract_binary_medhop_instances(medhop_instances):
         pairs = list(combinations(instance[1], 2))
 
         binary_instances += [(replace_entities(instance[0], pair[0][1], pair[1][1]),
-                              pair) for pair in pairs]
+                              (pair[0], pair[1])) for pair in pairs]
+        binary_instances += [(replace_entities(instance[0], pair[1][1], pair[0][1]),
+                              (pair[1], pair[0])) for pair in pairs]
+
     return binary_instances
 
 
-def extract_document_binary_medhop_instances(documents):
+def extract_document_binary_medhop_instances(documents, sentence_wise=True, entity_list_path=None):
     binary_medhop_instances = []
-    biomed_entities = read_biomed_entity_list('./parsing/entities.txt')
-    print('{} possible entities'.format(len(biomed_entities)))
+    biomed_entities = None
+    if entity_list_path is not None:
+        biomed_entities = read_biomed_entity_list(entity_list_path)
+        print('{} possible entities'.format(len(biomed_entities)))
 
     for d in tqdm(documents):
-        document_medhop_instances = extract_medhop_instances(d, biomed_entities)
+        document_medhop_instances = extract_medhop_instances(d, biomed_entities, sentence_wise)
         document_binary_medhop_instances = extract_binary_medhop_instances(document_medhop_instances)
         binary_medhop_instances.append(document_binary_medhop_instances)
     return binary_medhop_instances
@@ -93,15 +99,10 @@ def extract_query_binary_medhop_instances(supports, documents, binary_medhop_ins
     return query_binary_medhop_instances
 
 
-def extract_graph(df, support_data_path=None):
-    if support_data_path is not None:
-        support_data = pickle.load(open(support_data_path, 'rb'))
-        supports = support_data[0]
-        binary_medhop_instances = support_data[1]
-    else:
-        # extract all unique supports
-        supports = list(set(chain.from_iterable(df['supports'])))
-        binary_medhop_instances = extract_document_binary_medhop_instances(supports)
+def extract_graph(df, sentence_wise=True, entity_list_path=None):
+    # extract all unique supports
+    supports = list(set(chain.from_iterable(df['supports'])))
+    binary_medhop_instances = extract_document_binary_medhop_instances(supports, sentence_wise, entity_list_path)
 
     df['graph'] = df.apply(lambda row: _extract_graph(row['supports'],
                                                       supports,
@@ -129,12 +130,8 @@ def _extract_graph(supports, documents, binary_medhop_instances):
             current_id += 1
         if (entity_id_mapping[ent1], entity_id_mapping[ent2]) not in relations:
             relations[(entity_id_mapping[ent1], entity_id_mapping[ent2])] = [relation]
-            # TODO: adding the relation the other way around as well. To see if that's necessary.
-            relations[(entity_id_mapping[ent2], entity_id_mapping[ent1])] = [relation]
         else:
             relations[(entity_id_mapping[ent1], entity_id_mapping[ent2])].append(relation)
-            # TODO: adding the relation the other way around as well. To see if that's necessary.
-            relations[(entity_id_mapping[ent2], entity_id_mapping[ent1])].append(relation)
     # create adjacency matrix with entity_ids
     adj_matrix = np.zeros((len(entity_id_mapping), len(entity_id_mapping)))
     for (ent1_id, ent2_id) in relations.keys():
@@ -150,8 +147,8 @@ def extract_target_and_relation(df):
     df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
 
 
-def preprocess_medhop(df):
-    extract_graph(df)
+def preprocess_medhop(df, sentence_wise=True, entity_list_path=None):
+    extract_graph(df, sentence_wise, entity_list_path)
     print('Extracted graph data')
     extract_target_and_relation(df)
     print('Extracted target and relation')
@@ -160,5 +157,6 @@ def preprocess_medhop(df):
 
 if __name__ == "__main__":
     df = pd.read_json('./qangaroo_v1.1/medhop/train.json', orient='records')
-    df = preprocess_medhop(df)
-    df.to_json('train_with_graph.json')
+    df = preprocess_medhop(df,
+                           sentence_wise=False,
+                           entity_list_path='./parsing/entities.txt')
