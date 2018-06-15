@@ -1,6 +1,7 @@
 import argparse
 import json
 import pandas as pd
+import pickle
 from parsing.medhop_graph_extraction import preprocess_medhop
 from parsing.medhop_path_extraction import extract_paths_dataset
 
@@ -13,6 +14,10 @@ parser.add_argument('input_path',
 parser.add_argument('output_path',
                     type=str,
                     help='Output path')
+
+parser.add_argument('document_store_path',
+                    type=str,
+                    help='Document store path')
 
 parser.add_argument('--sentence_wise',
                     action='store_true',
@@ -37,12 +42,14 @@ parser.add_argument('--limit',
 args = parser.parse_args()
 print('Input path:{}\n'
       'Output path:{}\n'
+      'Document store path:{}\n'
       'Entities path:{}\n'
       'Sentence wise:{}\n'
       'Path search method:{}\n'
       'Cutoff:{}\n'
       'Limit:{}\n'.format(args.input_path,
                           args.output_path,
+                          args.document_store_path,
                           args.entities_path,
                           args.sentence_wise,
                           args.path_search_method,
@@ -50,11 +57,13 @@ print('Input path:{}\n'
                           args.limit))
 
 df = pd.read_json(args.input_path, orient='records')
-df = preprocess_medhop(df, sentence_wise=args.sentence_wise, entity_list_path=args.entities_path)
+df, document_store = preprocess_medhop(df, sentence_wise=args.sentence_wise, entity_list_path=args.entities_path)
 paths_dataset = extract_paths_dataset(df,
                                       path_search_method_name=args.path_search_method,
                                       cutoff=args.cutoff,
                                       limit=args.limit
                                       )
+
+pickle.dump(document_store, open(args.document_store_path, 'wb'))
 with open(args.output_path, "w") as text_file:
     text_file.write(json.dumps(paths_dataset))

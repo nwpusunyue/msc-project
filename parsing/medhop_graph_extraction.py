@@ -7,10 +7,10 @@ from itertools import combinations
 from nltk.tokenize import sent_tokenize
 from nltk.tokenize import WordPunctTokenizer
 from parsing.special_tokens import *
+from parsing.document_store import DocumentStore
 from tqdm import tqdm
 
 word_tokenizer = WordPunctTokenizer()
-target_regex = re.compile('^interacts_with (.+)\?$')
 biomed_entity = re.compile("[ABCDEFGHIKMOPQS][0-9,A-Z]+[0-9]+")
 
 
@@ -55,23 +55,14 @@ def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True)
     return document_instances
 
 
-def replace_entities(tokens, list_ent1, list_ent2):
-    tokens_cpy = tokens.copy()
-    for idx in list_ent1:
-        tokens_cpy[idx] = ENT_1
-    for idx in list_ent2:
-        tokens_cpy[idx] = ENT_2
-    return tokens_cpy
-
-
-def extract_binary_medhop_instances(medhop_instances):
+def extract_binary_medhop_instances(doc_idx, medhop_instances):
     binary_instances = []
     for instance in medhop_instances:
         pairs = list(combinations(instance[1], 2))
 
-        binary_instances += [(replace_entities(instance[0], pair[0][1], pair[1][1]),
+        binary_instances += [(doc_idx,
                               (pair[0], pair[1])) for pair in pairs]
-        binary_instances += [(replace_entities(instance[0], pair[1][1], pair[0][1]),
+        binary_instances += [(doc_idx,
                               (pair[1], pair[0])) for pair in pairs]
 
     return binary_instances
@@ -79,16 +70,22 @@ def extract_binary_medhop_instances(medhop_instances):
 
 def extract_document_binary_medhop_instances(documents, sentence_wise=True, entity_list_path=None):
     binary_medhop_instances = []
+    medhop_instances = []
     biomed_entities = None
+
     if entity_list_path is not None:
         biomed_entities = read_biomed_entity_list(entity_list_path)
         print('{} possible entities'.format(len(biomed_entities)))
 
-    for d in tqdm(documents):
+    for d_idx, d in tqdm(enumerate(documents)):
         document_medhop_instances = extract_medhop_instances(d, biomed_entities, sentence_wise)
-        document_binary_medhop_instances = extract_binary_medhop_instances(document_medhop_instances)
+        medhop_instances.append(document_medhop_instances)
+
+        document_binary_medhop_instances = extract_binary_medhop_instances(d_idx, document_medhop_instances)
         binary_medhop_instances.append(document_binary_medhop_instances)
-    return binary_medhop_instances
+
+    document_store = DocumentStore(medhop_instances)
+    return binary_medhop_instances, document_store
 
 
 def extract_query_binary_medhop_instances(supports, documents, binary_medhop_instances):
@@ -101,13 +98,17 @@ def extract_query_binary_medhop_instances(supports, documents, binary_medhop_ins
 
 def extract_graph(df, sentence_wise=True, entity_list_path=None):
     # extract all unique supports
-    supports = list(set(chain.from_iterable(df['supports'])))
-    binary_medhop_instances = extract_document_binary_medhop_instances(supports, sentence_wise, entity_list_path)
+    supports = sorted(list(set(chain.from_iterable(df['supports']))))
+    print('Total documents: {}'.format(len(supports)))
+    binary_medhop_instances, document_store = extract_document_binary_medhop_instances(supports,
+                                                                                       sentence_wise,
+                                                                                       entity_list_path)
 
     df['graph'] = df.apply(lambda row: _extract_graph(row['supports'],
                                                       supports,
                                                       binary_medhop_instances),
                            axis=1)
+    return document_store
 
 
 def _extract_graph(supports, documents, binary_medhop_instances):
@@ -137,26 +138,19 @@ def _extract_graph(supports, documents, binary_medhop_instances):
     for (ent1_id, ent2_id) in relations.keys():
         adj_matrix[ent1_id, ent2_id] = 1.0
     labels = [i[0] for i in sorted(entity_id_mapping.items(), key=operator.itemgetter(1))]
-    return (entity_id_mapping, adj_matrix, relations, labels)
-
-
-def extract_target_and_relation(df):
-    regex = re.compile('^(.+) (.+)\?$')
-
-    df['target'] = df['query'].apply(lambda q: regex.match(q).group(2))
-    df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
+    return entity_id_mapping, adj_matrix, relations, labels
 
 
 def preprocess_medhop(df, sentence_wise=True, entity_list_path=None):
-    extract_graph(df, sentence_wise, entity_list_path)
+    document_store = extract_graph(df, sentence_wise, entity_list_path)
     print('Extracted graph data')
     extract_target_and_relation(df)
     print('Extracted target and relation')
-    return df.drop('supports', axis=1)
+    return df.drop('supports', axis=1), document_store
 
 
 if __name__ == "__main__":
     df = pd.read_json('./qangaroo_v1.1/medhop/train.json', orient='records')
-    df = preprocess_medhop(df,
-                           sentence_wise=False,
-                           entity_list_path='./parsing/entities.txt')
+    df, document_store = preprocess_medhop(df,
+                                           sentence_wise=False,
+                                           entity_list_path='./parsing/entities.txt')

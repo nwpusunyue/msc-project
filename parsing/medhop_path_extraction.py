@@ -1,16 +1,23 @@
 import json
+
 import networkx as nx
 import numpy as np
 import pandas as pd
-from parsing.special_tokens import *
-from parsing.path_search import shortest_paths, shortest_paths_plus_threshold, all_paths
 from tqdm import tqdm
+
+from parsing.path_search import (
+    all_paths,
+    shortest_paths,
+    shortest_paths_plus_threshold,
+)
 
 path_search_method = {
     'shortest': shortest_paths,
     'shortest_plus': shortest_paths_plus_threshold,
     'all': all_paths
 }
+
+END_IDX = -1
 
 
 class EntityNotFoundException(Exception):
@@ -50,7 +57,7 @@ def get_paths(graph_info, source, target, path_search_method_name, cutoff=None, 
                 # TODO!: Need to deal with multiple relations between the same entities!
                 rel_path.append(rel[0])
             entity_path.append(e2_str)
-            rel_path.append([END])
+            rel_path.append(END_IDX)
             entity_paths.append(entity_path)
             rel_paths.append(rel_path)
 
@@ -109,6 +116,7 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None, limit=None):
                                                     src,
                                                     target,
                                                     cutoff=cutoff,
+                                                    limit=limit,
                                                     path_search_method_name=path_search_method_name)
 
                 dataset['id'].append(question_id)
