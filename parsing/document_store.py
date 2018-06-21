@@ -8,7 +8,7 @@ class DocumentStore:
                           for document_medhop_instances
                           in medhop_instances]
         self.document_entities = []
-        self.max_tokens = reduce(lambda p1, p2: max(p1, len(p2)),  self.documents, 0)
+        self.max_tokens = reduce(lambda p1, p2: max(p1, len(p2)), self.documents, 0)
         for idx, document_medhop_instances in enumerate(medhop_instances):
             entities_list = document_medhop_instances[0][1]
             self.document_entities.append({entity[0]: entity[1] for entity in entities_list})
@@ -21,7 +21,15 @@ class DocumentStore:
             tokens_cpy[idx] = ENT_2
         return tokens_cpy
 
-    def get_document(self, idx, source, target):
+    def get_document(self, idx, source, target, truncate=False):
+        if truncate:
+            pos = self.document_entities[idx][source] + self.document_entities[idx][target]
+            start = min(pos)
+            end = max(pos) + 1
+        else:
+            start = 0
+            end = len(self.documents[idx])
+
         return self._replace_entities(self.documents[idx],
                                       self.document_entities[idx][source],
-                                      self.document_entities[idx][target])
+                                      self.document_entities[idx][target])[start:end]

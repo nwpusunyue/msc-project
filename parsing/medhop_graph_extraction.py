@@ -1,16 +1,16 @@
-import numpy as np
 import operator
-import pandas as pd
 import re
-from itertools import chain
-from itertools import combinations
-from nltk.tokenize import sent_tokenize
-from nltk.tokenize import WordPunctTokenizer
-from parsing.special_tokens import *
-from parsing.document_store import DocumentStore
+from itertools import chain, combinations
+
+import numpy as np
+import pandas as pd
+from nltk.tokenize import WordPunctTokenizer, sent_tokenize
 from tqdm import tqdm
 
-word_tokenizer = WordPunctTokenizer()
+from parsing.document_store import DocumentStore
+from parsing.special_tokens import *
+
+
 biomed_entity = re.compile("[ABCDEFGHIKMOPQS][0-9,A-Z]+[0-9]+")
 
 
@@ -28,7 +28,7 @@ def extract_target_and_relation(df):
     df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
 
 
-def extract_entities(text, biomed_entities=None):
+def extract_entities(text, biomed_entities=None, word_tokenizer=WordPunctTokenizer()):
     unique_entities = {}
     entity_idxs = []
 
@@ -42,16 +42,17 @@ def extract_entities(text, biomed_entities=None):
                 unique_entities[t].append(i)
     for entity_idx in entity_idxs:
         tokenized_text[entity_idx] = ENT_X
-    # return list of (entity, [list_of_occurences_indices]) tuples sorted by the index of the first occurence
+    # return list of (entity, [list_of_occurrences_indices]) tuples sorted by the index of the first occurence
     return (tokenized_text, sorted([(k, v) for k, v in unique_entities.items()], key=lambda x: x[0][1]))
 
 
-def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True):
+def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True, word_tokenizer=WordPunctTokenizer()):
     if sentence_wise:
         document_instances = list(filter(lambda x: len(x[1]) > 1,
-                                         [extract_entities(s, biomed_entities) for s in sent_tokenize(document)]))
+                                         [extract_entities(s, biomed_entities, word_tokenizer) for s in
+                                          sent_tokenize(document)]))
     else:
-        document_instances = [extract_entities(document, biomed_entities)]
+        document_instances = [extract_entities(document, biomed_entities, word_tokenizer)]
     return document_instances
 
 
@@ -68,7 +69,8 @@ def extract_binary_medhop_instances(doc_idx, medhop_instances):
     return binary_instances
 
 
-def extract_document_binary_medhop_instances(documents, sentence_wise=True, entity_list_path=None):
+def extract_document_binary_medhop_instances(documents, sentence_wise=True, entity_list_path=None,
+                                             word_tokenizer=WordPunctTokenizer()):
     binary_medhop_instances = []
     medhop_instances = []
     biomed_entities = None
@@ -78,7 +80,7 @@ def extract_document_binary_medhop_instances(documents, sentence_wise=True, enti
         print('{} possible entities'.format(len(biomed_entities)))
 
     for d_idx, d in tqdm(enumerate(documents)):
-        document_medhop_instances = extract_medhop_instances(d, biomed_entities, sentence_wise)
+        document_medhop_instances = extract_medhop_instances(d, biomed_entities, sentence_wise, word_tokenizer)
         medhop_instances.append(document_medhop_instances)
 
         document_binary_medhop_instances = extract_binary_medhop_instances(d_idx, document_medhop_instances)
@@ -96,13 +98,14 @@ def extract_query_binary_medhop_instances(supports, documents, binary_medhop_ins
     return query_binary_medhop_instances
 
 
-def extract_graph(df, sentence_wise=True, entity_list_path=None):
+def extract_graph(df, sentence_wise=True, entity_list_path=None, word_tokenizer=WordPunctTokenizer()):
     # extract all unique supports
     supports = sorted(list(set(chain.from_iterable(df['supports']))))
     print('Total documents: {}'.format(len(supports)))
     binary_medhop_instances, document_store = extract_document_binary_medhop_instances(supports,
                                                                                        sentence_wise,
-                                                                                       entity_list_path)
+                                                                                       entity_list_path,
+                                                                                       word_tokenizer)
 
     df['graph'] = df.apply(lambda row: _extract_graph(row['supports'],
                                                       supports,
@@ -141,8 +144,8 @@ def _extract_graph(supports, documents, binary_medhop_instances):
     return entity_id_mapping, adj_matrix, relations, labels
 
 
-def preprocess_medhop(df, sentence_wise=True, entity_list_path=None):
-    document_store = extract_graph(df, sentence_wise, entity_list_path)
+def preprocess_medhop(df, sentence_wise=True, entity_list_path=None, word_tokenizer=WordPunctTokenizer()):
+    document_store = extract_graph(df, sentence_wise, entity_list_path, word_tokenizer)
     print('Extracted graph data')
     extract_target_and_relation(df)
     print('Extracted target and relation')

@@ -11,6 +11,7 @@ from parsing.path_search import (
     shortest_paths_plus_threshold,
 )
 
+
 path_search_method = {
     'shortest': shortest_paths,
     'shortest_plus': shortest_paths_plus_threshold,
@@ -30,7 +31,6 @@ def get_paths(graph_info, source, target, path_search_method_name, cutoff=None, 
     if source not in graph_info[0] or target not in graph_info[0]:
         raise EntityNotFoundException('Source or target not in adjacency matrix')
     else:
-        # TODO!: Figure a way of setting the cutoff point for path lengths.
         paths = path_search_method[path_search_method_name](G,
                                                             graph_info[0][source],
                                                             graph_info[0][target],
