@@ -76,10 +76,10 @@ def get_model(emb, max_path_len, embedder_params, encoder_params, l2=0.0, clip_o
                            shape=[None])
 
     # [batch_size, max_path_len, emb_dim]
-    rel_seq_embd = embed_sequence(rel_seq, emb, name='relation_embedder', **embedder_params)
+    rel_seq_embd = emb.embed_sequence(rel_seq, name='relation_embedder', **embedder_params)
 
     # [batch_size, emb_dim]
-    target_rel_embd = embed_sequence(target_rel, emb, name='relation_embedder', reuse=True, **embedder_params)
+    target_rel_embd = emb.embed_sequence(target_rel, name='relation_embedder', reuse=True, **embedder_params)
 
     path_rnn = PathRnn()
 

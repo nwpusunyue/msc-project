@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from itertools import chain
 from path_rnn_v2.util.batch_generator import PartitionBatchGenerator
-from path_rnn_v2.util.embeddings import RandomEmbeddings, embed_sequence
+from path_rnn_v2.util.embeddings import RandomEmbeddings
 from path_rnn_v2.util.ops import create_reset_metric
 from path_rnn_v2.nn.base_model import BaseModel
 from path_rnn_v2.nn.path_rnn import PathRnn
@@ -78,12 +78,13 @@ class ChainsOfReasoningModel(BaseModel):
         self._setup_placeholders(max_path_len=self.max_path_len)
 
         # [batch_size, max_path_len, emb_dim]
-        rel_seq_embd = embed_sequence(self.rel_seq, self.relation_embedder,
-                                      name='relation_embedder',
-                                      **self.embedder_params)
+        rel_seq_embd = self.relation_embedder.embed_sequence(self.rel_seq,
+                                                             name='relation_embedder',
+                                                             **self.embedder_params)
         # [batch_size, emb_dim]
-        target_rel_embd = embed_sequence(self.target_rel, self.relation_embedder,
-                                         name='relation_embedder', reuse=True, **self.embedder_params)
+        target_rel_embd = self.relation_embedder.embed_sequence(self.target_rel,
+                                                                name='relation_embedder', reuse=True,
+                                                                **self.embedder_params)
 
         path_rnn = PathRnn()
         # [num_queries_in_batch]
@@ -100,7 +101,11 @@ class ChainsOfReasoningModel(BaseModel):
         self._training_variables = tf.trainable_variables()
 
     def _setup_evaluation(self):
-        pass
+        self
+        mean_loss, update_op_loss, reset_op_loss = create_reset_metric(tf.metrics.mean, 'mean_loss',
+                                                                       values=self.tensors['loss'])
+        acc, update_op_acc, reset_op_acc = create_reset_metric(tf.metrics.accuracy, 'mean_acc', labels=self.label,
+                                                               predictions=tf.round(self.tensors['prob']))
 
     def _setup_placeholders(self, max_path_len):
         # [batch_size, max_path_len]
@@ -133,7 +138,16 @@ class ChainsOfReasoningModel(BaseModel):
                         feed_dict=self.convert_to_feed_dict(batch))[0]
 
     def print_params(self):
-        pass
+        print('##########Model parameters##########\n'
+              'Max path length: {}\n'
+              'Embedder params:\n'
+              '{}\n'
+              '{}\n'
+              'Encoder params:\n'
+              '{}\n'
+              'Path RNN params:\n'
+              '{}\n'
+              '####################################\n')
 
 
 if __name__ == '__main__':

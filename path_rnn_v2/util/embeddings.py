@@ -1,4 +1,5 @@
 import logging
+import os
 
 import gensim
 import numpy as np
@@ -9,6 +10,9 @@ from path_rnn_v2.util.activations import activation_from_string
 from parsing.special_tokens import *
 
 logger = logging.getLogger(__name__)
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = ''
 
 
 def load_embedding_matrix(word2vec_path):
@@ -46,39 +50,6 @@ def add_special_tokens(vocab, embedding_matrix, special_tokens, seed=None):
     return vocab, np.append(embedding_matrix, random_embeddings, axis=0)
 
 
-def embed_sequence(seq, embd, name='embedder', max_norm=None, with_projection=False, projection_activation=None,
-                   projection_dim=None, reuse=None):
-    '''
-
-    :param seq: [batch_size, ..., max_seq_length] tensor
-    :param embd: An instantiation of the Embeddings abstract class
-    :param name: name of the scope
-    :param max_norm: if not None, the embeddings are l2-normalised to max norm
-    :param with_projection: If True the embeddings are projected through a dense layer
-    :param projection_activation:  used only when project is True. If not None, the specific
-    activation is used in the dense layer
-    :param projection_dim: if None, the projection dim is the embedding dim, else the provided
-    projection dim is used.
-    :return:
-    [batch_size, ..., max_seq_length, embd_dim]
-    '''
-    with tf.variable_scope(name, reuse=reuse):
-        embd_matrix = embd.get_embedding_matrix_tensor()
-        embd_seq = tf.nn.embedding_lookup(embd_matrix,
-                                          seq,
-                                          max_norm=max_norm)
-        if with_projection:
-            if projection_dim is None:
-                projection_dim = embd_matrix.get_shape()[1]
-            if projection_activation is not None:
-                projection_activation = activation_from_string(projection_activation)
-            embd_seq = tf.layers.dense(embd_seq,
-                                       projection_dim,
-                                       activation=projection_activation,
-                                       use_bias=False)
-    return embd_seq
-
-
 class Embeddings(ABC):
 
     @abstractmethod
@@ -88,6 +59,43 @@ class Embeddings(ABC):
     @abstractmethod
     def get_embedding_matrix_tensor(self):
         pass
+
+    @property
+    @abstractmethod
+    def config_str(self):
+        pass
+
+    def embed_sequence(self, seq, name='embedder', max_norm=None, with_projection=False, projection_activation=None,
+                       projection_dim=None, reuse=None):
+        '''
+
+        :param seq: [batch_size, ..., max_seq_length] tensor
+        :param embd: An instantiation of the Embeddings abstract class
+        :param name: name of the scope
+        :param max_norm: if not None, the embeddings are l2-normalised to max norm
+        :param with_projection: If True the embeddings are projected through a dense layer
+        :param projection_activation:  used only when project is True. If not None, the specific
+        activation is used in the dense layer
+        :param projection_dim: if None, the projection dim is the embedding dim, else the provided
+        projection dim is used.
+        :return:
+        [batch_size, ..., max_seq_length, embd_dim]
+        '''
+        with tf.variable_scope(name, reuse=reuse):
+            embd_matrix = self.get_embedding_matrix_tensor()
+            embd_seq = tf.nn.embedding_lookup(embd_matrix,
+                                              seq,
+                                              max_norm=max_norm)
+            if with_projection:
+                if projection_dim is None:
+                    projection_dim = embd_matrix.get_shape()[1]
+                if projection_activation is not None:
+                    projection_activation = activation_from_string(projection_activation)
+                embd_seq = tf.layers.dense(embd_seq,
+                                           projection_dim,
+                                           activation=projection_activation,
+                                           use_bias=False)
+        return embd_seq
 
 
 class Word2VecEmbeddings(Embeddings):
@@ -113,6 +121,19 @@ class Word2VecEmbeddings(Embeddings):
                                dtype=tf.float32,
                                trainable=self.trainable)
 
+    @property
+    def config_str(self):
+        return ('=====Embedding params=====\n'
+                'Name: {}\n'
+                'Embedding size: {}\n'
+                'Vocab size: {}\n'
+                'Is Trainable: {}\n'
+                'Unknown token: {}\n'
+                'Special tokens: {}\n'
+                '========================='.format(self.name, self.embedding_matrix.shape[0],
+                                                   self.embedding_matrix.shape[1],
+                                                   self.trainable, self.unk_token, self.special_tokens))
+
 
 class RandomEmbeddings(Embeddings):
 
@@ -131,6 +152,17 @@ class RandomEmbeddings(Embeddings):
                                shape=[len(self.vocab), self.embedding_size],
                                initializer=self.initializer,
                                trainable=True)
+
+    @property
+    def config_str(self):
+        return ('=====Embedding params===== \n'
+                'Name: {}\n'
+                'Embedding size: {}\n'
+                'Vocab size: {}\n'
+                'Initializer: {}\n'
+                'Unknown token: {}\n'
+                '========================='.format(self.name, self.embedding_size, len(self.vocab), self.initializer,
+                                                   self.unk_token))
 
 
 class EntityTypeEmbeddings(RandomEmbeddings):
@@ -151,6 +183,19 @@ class EntityTypeEmbeddings(RandomEmbeddings):
     def get_idx(self, token):
         return self.vocab[self.entity2type[token]] if token in self.entity2type else self.vocab[self.unk_token]
 
+    @property
+    def config_str(self):
+        return ('=====Embedding params===== \n'
+                'Name: {}\n'
+                'Embedding size: {}\n'
+                'Entities mapped: {}\n'
+                'Entity types: {}\n'
+                'Initializer: {}\n'
+                'Unknown token: {}\n'
+                '========================='.format(self.name, self.embedding_size, len(self.vocab), self.vocab,
+                                                   self.initializer,
+                                                   self.unk_token))
+
 
 if __name__ == '__main__':
     embd = Word2VecEmbeddings('medhop_word2vec_punkt',
@@ -158,7 +203,7 @@ if __name__ == '__main__':
                               unk_token=UNK,
                               trainable=False,
                               special_tokens=[(UNK, False), (PAD, True)])
-
+    print(embd.config_str)
     batch_size = 2
     seq_len = 3
     test_seq = np.zeros([batch_size, seq_len])
@@ -171,11 +216,12 @@ if __name__ == '__main__':
     activation = 'relu'
     projection_dim = 50
     seq = tf.placeholder(tf.int32, shape=[None, None], name='seq')
-    seq_embd = embed_sequence(seq, embd, name='test_emb')
-    seq_embd_normed = embed_sequence(seq, embd, name='test_emb_normed', max_norm=max_norm)
-    seq_embd_projected = embed_sequence(seq, embd, name='test_emb_proj', with_projection=True, projection_activation=activation)
-    seq_embd_projected_resize = embed_sequence(seq, embd, name='test_embd_proj_resize', with_projection=True,
-                                               projection_activation=activation, projection_dim=projection_dim)
+    seq_embd = embd.embed_sequence(seq, name='test_emb')
+    seq_embd_normed = embd.embed_sequence(seq, name='test_emb_normed', max_norm=max_norm)
+    seq_embd_projected = embd.embed_sequence(seq, name='test_emb_proj', with_projection=True,
+                                             projection_activation=activation)
+    seq_embd_projected_resize = embd.embed_sequence(seq, name='test_embd_proj_resize', with_projection=True,
+                                                    projection_activation=activation, projection_dim=projection_dim)
 
     for op in tf.get_default_graph().get_operations():
         print(str(op.name))
