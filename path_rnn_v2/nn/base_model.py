@@ -1,11 +1,7 @@
-import logging
-
 import tensorflow as tf
 
 from abc import ABC, abstractmethod
 from functools import reduce
-
-logger = logging.getLogger(__name__)
 
 
 class BaseModel(ABC):
@@ -23,8 +19,9 @@ class BaseModel(ABC):
     def _setup_evaluation(self):
         pass
 
+    @property
     @abstractmethod
-    def print_params(self, train_params):
+    def params_str(self):
         pass
 
     @abstractmethod
@@ -36,27 +33,35 @@ class BaseModel(ABC):
         if global_step is None:
             global_step = tf.train.create_global_step()
 
+        gradients = optimizer.compute_gradients(loss=loss)
+        tf.summary.scalar('gradients_l2', tf.add_n([tf.nn.l2_loss(grad[0]) for grad in gradients]),
+                          collections=['summary_train'])
+
         if l2:
             loss += tf.add_n([tf.nn.l2_loss(v) for v in self.train_variables]) * l2
         if clip:
-            gradients = optimizer.compute_gradients(loss=loss)
             if clip_op == tf.clip_by_value:
                 gradients = [(tf.clip_by_value(grad, clip[0], clip[1]), var)
                              for grad, var in gradients if grad is not None]
             elif clip_op == tf.clip_by_norm:
                 gradients = [(tf.clip_by_norm(grad, clip), var)
                              for grad, var in gradients if grad is not None]
-            train_op = optimizer.apply_gradients(gradients, global_step)
-        else:
-            train_op = optimizer.minimize(loss, global_step)
+
+        train_op = optimizer.apply_gradients(gradients, global_step)
 
         variable_size = lambda v: reduce(lambda x, y: x * y, v.get_shape().as_list()) if v.get_shape() else 1
         num_params = sum(variable_size(v) for v in self.train_variables)
-        logger.info("Number of parameters: {}".format(num_params))
+        print("Number of parameters: {}".format(num_params))
 
         self._tensors['loss'] = loss
         self._tensors['train_op'] = train_op
+        self._tensors['global_step'] = global_step
         return loss, train_op
+
+    def _setup_summaries(self):
+        self._tensors['summary_train'] = tf.summary.merge_all('summary_train')
+        self._tensors['summary_test'] = tf.summary.merge_all('summary_test')
+        self._tensors['summary_train_eval'] = tf.summary.merge_all('summary_train_eval')
 
     @property
     def placeholders(self):
@@ -67,7 +72,7 @@ class BaseModel(ABC):
         if hasattr(self, "_placeholders"):
             return self._placeholders
         else:
-            logger.warning("Asking for placeholders without having setup this module. Returning None.")
+            print("Asking for placeholders without having setup this module. Returning None.")
             return None
 
     @property
@@ -79,7 +84,7 @@ class BaseModel(ABC):
         if hasattr(self, "_tensors"):
             return self._tensors
         else:
-            logger.warning("Asking for tensors without having setup this module. Returning None.")
+            print("Asking for tensors without having setup this module. Returning None.")
             return None
 
     @property

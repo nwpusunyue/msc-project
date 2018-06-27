@@ -1,4 +1,6 @@
 import os
+import pprint
+import time
 
 import numpy as np
 import pandas as pd
@@ -63,8 +65,11 @@ class ChainsOfReasoningModel(BaseModel):
     def __init__(self, model_params, train_params):
         super().__init__()
         self._tensors = {}
+        self.train_params = train_params
         self._setup_model(model_params)
-        self._setup_training(self.tensors['loss'], **train_params)
+        self._setup_training(self.tensors['loss'], **self.train_params)
+        self._setup_evaluation()
+        self._setup_summaries()
         self._variables = tf.global_variables()
 
     def _setup_model(self, params):
@@ -96,16 +101,30 @@ class ChainsOfReasoningModel(BaseModel):
         loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(self.label, dtype=score.dtype),
                                                     logits=score))
+
         self._tensors['loss'] = loss
         self._tensors['prob'] = prob
         self._training_variables = tf.trainable_variables()
 
     def _setup_evaluation(self):
-        self
         mean_loss, update_op_loss, reset_op_loss = create_reset_metric(tf.metrics.mean, 'mean_loss',
                                                                        values=self.tensors['loss'])
+        self._tensors['mean_loss'] = mean_loss
+        self._tensors['update_op_loss'] = update_op_loss
+        self._tensors['reset_op_loss'] = reset_op_loss
+
         acc, update_op_acc, reset_op_acc = create_reset_metric(tf.metrics.accuracy, 'mean_acc', labels=self.label,
                                                                predictions=tf.round(self.tensors['prob']))
+
+        self._tensors['acc'] = acc
+        self._tensors['update_op_acc'] = update_op_acc
+        self._tensors['reset_op_acc'] = reset_op_acc
+
+        tf.summary.scalar('train_loss', self.tensors['loss'], collections=['summary_train'])
+        tf.summary.scalar('test_loss', mean_loss, collections=['summary_test'])
+        tf.summary.scalar('test_acc', acc, collections=['summary_test'])
+        tf.summary.scalar('train_eval_loss', mean_loss, collections=['summary_train_eval'])
+        tf.summary.scalar('train_eval_acc', acc, collections=['summary_train_eval'])
 
     def _setup_placeholders(self, max_path_len):
         # [batch_size, max_path_len]
@@ -132,22 +151,54 @@ class ChainsOfReasoningModel(BaseModel):
             'label': self.label
         }
 
-    def train_step(self, batch, sess):
-        return sess.run([self.tensors['loss'],
-                         self.tensors['train_op']],
-                        feed_dict=self.convert_to_feed_dict(batch))[0]
+    def train_step(self, batch, sess, summ_writer=None):
+        if summ_writer is not None:
+            summ, loss, _ = sess.run([self.tensors['summary_train'],
+                                      self.tensors['loss'],
+                                      self.tensors['train_op']],
+                                     feed_dict=self.convert_to_feed_dict(batch))
+            summ_writer.add_summary(summ, tf.train.global_step(sess, self.tensors['global_step']))
+        else:
+            loss, _ = sess.run([self.tensors['loss'],
+                                self.tensors['train_op']],
+                               feed_dict=self.convert_to_feed_dict(batch))
+        return loss
 
-    def print_params(self):
-        print('##########Model parameters##########\n'
-              'Max path length: {}\n'
-              'Embedder params:\n'
-              '{}\n'
-              '{}\n'
-              'Encoder params:\n'
-              '{}\n'
-              'Path RNN params:\n'
-              '{}\n'
-              '####################################\n')
+    def eval_step(self, batch, sess, reset=False, summ_writer=None, summ_collection=None):
+
+        if batch is not None:
+            sess.run([self.tensors['update_op_loss'], self.tensors['update_op_acc']],
+                     feed_dict=self.convert_to_feed_dict(batch))
+
+        if summ_writer is not None and summ_collection is not None and summ_collection in self.tensors:
+            summ, loss, acc = sess.run([self.tensors[summ_collection], self.tensors['mean_loss'], self.tensors['acc']])
+            summ_writer.add_summary(summ, tf.train.global_step(sess, self.tensors['global_step']))
+        else:
+            loss, acc = sess.run([self.tensors['mean_loss'], self.tensors['acc']])
+
+        if reset:
+            sess.run([self.tensors['reset_op_loss'], self.tensors['reset_op_acc']])
+        return loss, acc
+
+    @property
+    def params_str(self):
+        return ('===============Model parameters=============\n'
+                'Max path length: {}\n'
+                'Embedder params:\n'
+                '{}\n'
+                '{}\n'
+                'Encoder params:\n'
+                '{}\n'
+                'Path RNN params:\n'
+                '{}\n'
+                '===============Train parameters=============\n'
+                '{}\n'
+                '============================================\n'.format(self.max_path_len,
+                                                                        self.relation_embedder.config_str,
+                                                                        pprint.pformat(self.embedder_params),
+                                                                        pprint.pformat(self.encoder_params),
+                                                                        pprint.pformat(self.path_rnn_params),
+                                                                        pprint.pformat(self.train_params)))
 
 
 if __name__ == '__main__':
@@ -171,6 +222,17 @@ if __name__ == '__main__':
                                      target_rel=train[
                                          'target_relation'],
                                      label=train['label'])
+    (dev_path_partition,
+     dev_path_len,
+     dev_indexed_rel_path,
+     dev_indexed_target_rel,
+     dev_label) = get_numpy_arrays(embd=random_embd,
+                                   rel_paths=dev[
+                                       'relation_paths'],
+                                   target_rel=dev[
+                                       'target_relation'],
+                                   label=dev['label'],
+                                   max_path_len=train_indexed_rel_path.shape[1])
     model_params = {
         'max_path_len': train_indexed_rel_path.shape[1],
         'relation_embedder': random_embd,
@@ -191,14 +253,14 @@ if __name__ == '__main__':
             }
         },
         'path_rnn_params': {
-            'aggregator': 'logsumexp',
+            'aggregator': 'max',
             'k': None
         }
     }
 
     train_params = {
         'optimizer': tf.train.AdamOptimizer(learning_rate=1e-3),
-        'l2': 0.0,
+        'l2': 0.0001,
         'clip_op': None,
         'clip': None
     }
@@ -212,11 +274,46 @@ if __name__ == '__main__':
                                                         'target_rel': train_indexed_target_rel
                                                     },
                                                     batch_size=100)
-    num_epocs = 1
-    steps = 1000
-    with tf.train.MonitoredTrainingSession() as sess:
+    train_eval_batch_generator = PartitionBatchGenerator(partition=train_path_partition,
+                                                         label=train_label,
+                                                         tensor_dict={
+                                                             'seq_len': train_path_len,
+                                                             'rel_seq': train_indexed_rel_path,
+                                                             'target_rel': train_indexed_target_rel
+                                                         },
+                                                         batch_size=100,
+                                                         permute=False)
+    dev_batch_generator = PartitionBatchGenerator(partition=dev_path_partition,
+                                                  label=dev_label,
+                                                  tensor_dict={
+                                                      'seq_len': dev_path_len,
+                                                      'rel_seq': dev_indexed_rel_path,
+                                                      'target_rel': dev_indexed_target_rel
+                                                  },
+                                                  batch_size=20,
+                                                  permute=False)
 
+    num_epocs = 1
+    steps = 10000
+    check_period = 50
+
+    with tf.train.MonitoredTrainingSession() as sess:
+        summ_writer = tf.summary.FileWriter('./chains_of_reasoning_logs/run_{}'.format(time.time()))
         for i in tqdm(range(steps)):
             batch = train_batch_generator.get_batch()
-            batch_loss = model.train_step(batch, sess)
-            print(batch_loss)
+            batch_loss = model.train_step(batch, sess, summ_writer=summ_writer)
+            if i % check_period == 0:
+                for j in range(train_eval_batch_generator.batch_count):
+                    batch = train_eval_batch_generator.get_batch()
+                    model.eval_step(batch, sess)
+
+                metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
+                                          summ_collection='summary_train_eval')
+                print('Train loss: {} Train acc: {}'.format(metrics[0], metrics[1]))
+                for j in range(dev_batch_generator.batch_count):
+                    batch = dev_batch_generator.get_batch()
+                    model.eval_step(batch, sess)
+
+                metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
+                                          summ_collection='summary_test')
+                print('Dev loss: {} Dev acc: {}'.format(metrics[0], metrics[1]))
