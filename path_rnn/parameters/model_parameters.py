@@ -1,4 +1,4 @@
-from path_rnn.model.path_rnn import PathRNN
+from path_rnn.nn.path_rnn import PathRNN
 
 
 class ModelParameters:
@@ -14,7 +14,9 @@ class ModelParameters:
                  relation_rnn_hidden_size=150,
                  relation_keep_prob=0.9,
                  truncate_documents=False,
-                 label_smoothing=0.0):
+                 label_smoothing=0.0,
+                 use_entity_type=False,
+                 entity_type_embd_size=50):
         self.max_path_length = max_path_length
         self.max_relation_length = max_relation_length
         self.path_rnn_hidden_size = path_rnn_hidden_size
@@ -26,6 +28,8 @@ class ModelParameters:
         self.relation_rnn_hidden_size = relation_rnn_hidden_size
         self.truncate_documents = truncate_documents
         self.label_smoothing = label_smoothing
+        self.use_entity_type = use_entity_type
+        self.entity_type_embd_size = entity_type_embd_size
 
     def print(self):
         print('\n'.join("%s: %s" % item for item in vars(self).items()))

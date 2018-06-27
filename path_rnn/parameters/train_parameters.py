@@ -27,6 +27,7 @@ class TrainParameters:
                  check_period=10,
                  debug_mode=False,
                  word_embd_path='medhop_word2vec_punkt',
+                 entity2type_path='./parsing/entity_map.txt',
                  train_eval_batch_size=None):
         self.optimizer = optimizer
         self.learning_rate = learning_rate
@@ -37,6 +38,7 @@ class TrainParameters:
         self.check_period = check_period
         self.debug_mode = debug_mode
         self.word_embd_path = word_embd_path
+        self.entity2type_path = entity2type_path
         self.train_eval_batch_size = train_eval_batch_size
 
     def print(self):

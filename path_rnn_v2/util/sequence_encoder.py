@@ -7,7 +7,7 @@ from path_rnn_v2.util.ops import extract_axis_1, replace_val
 
 
 def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', reuse=False, activation=None,
-            dropout=None, **kwargs):
+            dropout=None, extra_args=None):
     '''
 
     :param sequence: [batch_size, max_sequence_length, input_dim] tensor
@@ -19,17 +19,20 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
     :param kwargs:
     :return:
     '''
+    if extra_args is None:
+        extra_args = {}
+
     with tf.variable_scope(name, reuse=reuse):
         if module == 'lstm':
             # [batch_size, repr_dim x 2]
-            out = bi_lstm(repr_dim, sequence, seq_length, **kwargs)
+            out = bi_lstm(repr_dim, sequence, seq_length, **extra_args)
         elif module == 'rnn':
             # [batch_size, repr_dim x 2]
             out = bi_rnn(repr_dim, tf.nn.rnn_cell.BasicRNNCell(repr_dim, activation_from_string(activation)),
-                         sequence, seq_length, **kwargs)
+                         sequence, seq_length, **extra_args)
         elif module == 'gru':
             # [batch_size, repr_dim x 2]
-            out = bi_rnn(repr_dim, tf.contrib.rnn.GRUBlockCell(repr_dim), sequence, seq_length)
+            out = bi_rnn(repr_dim, tf.contrib.rnn.GRUBlockCell(repr_dim), sequence, seq_length, **extra_args)
         elif module == 'dense':
             # [batch_size, repr_dim x 2]
             out = tf.layers.dense(sequence, repr_dim)
@@ -55,25 +58,27 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
 
 
 # RNN Encoders
-def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False):
-    output = rnn.fused_birnn(fused_rnn, sequence, seq_length, dtype=tf.float32, scope='rnn')[0]
-
-    output = tf.concat([extract_axis_1(output[0], seq_length - 1),
-                        extract_axis_1(output[1], seq_length - 1)], 1)
-
+def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False, with_backward=True):
+    output = rnn.fused_birnn(fused_rnn, sequence, seq_length, with_backward=with_backward,
+                             dtype=tf.float32, scope='rnn')[0]
+    if with_backward:
+        output = tf.concat([extract_axis_1(output[0], seq_length - 1),
+                            extract_axis_1(output[1], seq_length - 1)], 1)
+    else:
+        output = extract_axis_1(output, seq_length - 1)
     if with_projection:
         projection_initializer = tf.constant_initializer(np.concatenate([np.eye(size), np.eye(size)]))
         output = tf.layers.dense(output, size, kernel_initializer=projection_initializer, name='projection')
     return output
 
 
-def bi_lstm(size, sequence, seq_length, with_projection=False):
-    return _bi_rnn(size, tf.contrib.rnn.LSTMBlockFusedCell(size), sequence, seq_length, with_projection)
+def bi_lstm(size, sequence, seq_length, with_projection=False, with_backward=True):
+    return _bi_rnn(size, tf.contrib.rnn.LSTMBlockFusedCell(size), sequence, seq_length, with_projection, with_backward)
 
 
-def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False):
+def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False, with_backward=True):
     fused_rnn = tf.contrib.rnn.FusedRNNCellAdaptor(rnn_cell, use_dynamic_rnn=True)
-    return _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection)
+    return _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection, with_backward)
 
 
 if __name__ == '__main__':

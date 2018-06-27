@@ -74,15 +74,15 @@ class BatchGenerator:
         print('Train queries: {} in {} batches,\n'
               'Test queries: {} in {} batches,\n'
               'Train evaluation queries: {} in {} batches\n'.format(self.train_size,
-                                                                  train_idxs_generator.total_batches,
-                                                                  self.test_size,
-                                                                  test_idxs_generator.total_batches,
-                                                                  self.train_eval_size,
-                                                                  train_eval_idxs_generator.total_batches))
+                                                                    train_idxs_generator.total_batches,
+                                                                    self.test_size,
+                                                                    test_idxs_generator.total_batches,
+                                                                    self.train_eval_size,
+                                                                    train_eval_idxs_generator.total_batches))
 
-    def get_batch(self, batch_type, debug=False):
+    def get_batch(self, batch_type, return_idxs=False, debug=False):
         idxs = self.idx_generators[batch_type].get_batch_idxs(debug)
-        return self._get_data(idxs)
+        return self._get_data(idxs, return_idxs)
 
     def get_batch_count(self, batch_type):
         return self.idx_generators[batch_type].total_batches
@@ -90,7 +90,7 @@ class BatchGenerator:
     def get_epochs_completed(self, batch_type):
         return self.idx_generators[batch_type].epochs_completed
 
-    def _get_data(self, idxs):
+    def _get_data(self, idxs, return_idxs=False):
         path_ranges = self.path_partitions[idxs]
         path_idxs = list(chain.from_iterable([list(range(path_ranges[i, 0], path_ranges[i, 1]))
                                               for i in range(len(idxs))]))
@@ -103,13 +103,23 @@ class BatchGenerator:
         num_words = self.num_words[path_idxs]
         labels = self.labels[idxs]
 
-        return (rel_seq,
-                ent_seq,
-                target_relations,
-                partitions,
-                path_lengths,
-                num_words,
-                labels)
+        if return_idxs:
+            return (rel_seq,
+                    ent_seq,
+                    target_relations,
+                    partitions,
+                    path_lengths,
+                    num_words,
+                    labels,
+                    idxs)
+        else:
+            return (rel_seq,
+                    ent_seq,
+                    target_relations,
+                    partitions,
+                    path_lengths,
+                    num_words,
+                    labels)
 
     def _generate_partition(self, path_ranges):
         partition = np.zeros(shape=path_ranges.shape)

@@ -25,7 +25,7 @@ parser.add_argument('dev_path',
 
 parser.add_argument('output_path',
                     type=str,
-                    help='Word2Vec model path')
+                    help='Word2Vec nn path')
 
 parser.add_argument('--tokenizer',
                     type=str,

@@ -56,10 +56,11 @@ class PathRNN:
         self.relation_seq_token_embedded = self._get_embedding(embedding_matrix=self.relation_token_embedding,
                                                                input=self.relation_seq)
         # [batch_size, max_path_length, max_relation_length, embedding_dim]
-        self.relation_seq_token_projected = tf.contrib.layers.fully_connected(self.relation_seq_token_embedded,
-                                                                              relation_token_emb_dim,
-                                                                              biases_initializer=None,
-                                                                              activation_fn=None)
+        self.relation_seq_token_projected = tf.layers.dense(self.relation_seq_token_embedded,
+                                                            relation_token_emb_dim,
+                                                            activation=tf.tanh,
+                                                            use_bias=False,
+                                                            name='projection_rel_tok')
 
         if self.recurrent_relation_embedder:
             relation_rnn_state_size = (self.relation_rnn_cell.state_size.c
@@ -78,8 +79,10 @@ class PathRNN:
                                                   sequence_length=relation_rnn_seq_lengths,
                                                   dtype=tf.float32)
             if type(relation_state) is tf.contrib.rnn.LSTMStateTuple:
+                # [batch_size x max_path_length, relation_rnn_state_size]
                 relation_state = relation_state.c
 
+            # [batch_size, max_path_length, relation_rnn_state_size]
             relation_seq_embedded = tf.reshape(relation_state, shape=[-1,
                                                                       self.max_path_length,
                                                                       relation_rnn_state_size])
@@ -97,10 +100,11 @@ class PathRNN:
         self.entity_seq_embedded = self._get_embedding(embedding_matrix=self.entity_embedding,
                                                        input=self.entity_seq)
         # [batch_size, max_path_length, embedding_dim]
-        entity_seq_projected = tf.contrib.layers.fully_connected(self.entity_seq_embedded,
-                                                                 entity_emb_dim,
-                                                                 biases_initializer=None,
-                                                                 activation_fn=None)
+        entity_seq_projected = tf.layers.dense(self.entity_seq_embedded,
+                                               entity_emb_dim,
+                                               activation=tf.tanh,
+                                               use_bias=False,
+                                               name='projection_ent')
         return entity_seq_projected
 
     def build_model(self):
@@ -168,10 +172,10 @@ class PathRNN:
                                               shape=[None,
                                                      2])
         # [batch_size] - how many relations per each paths - can be passed to dynamic rnn
-        self.path_lengths = tf.placeholder(tf.int64,
+        self.path_lengths = tf.placeholder(tf.int32,
                                            shape=[None])
         # [batch_size, max_path_length] - how many words per each relation
-        self.num_words = tf.placeholder(tf.float64,
+        self.num_words = tf.placeholder(tf.float32,
                                         shape=[None,
                                                self.max_path_length])
         # [batch_size, max_path_length, max_relation_length]

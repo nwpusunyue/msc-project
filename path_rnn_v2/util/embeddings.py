@@ -47,7 +47,7 @@ def add_special_tokens(vocab, embedding_matrix, special_tokens, seed=None):
 
 
 def embed_sequence(seq, embd, name='embedder', max_norm=None, with_projection=False, projection_activation=None,
-                   projection_dim=None):
+                   projection_dim=None, reuse=None):
     '''
 
     :param seq: [batch_size, ..., max_seq_length] tensor
@@ -62,7 +62,7 @@ def embed_sequence(seq, embd, name='embedder', max_norm=None, with_projection=Fa
     :return:
     [batch_size, ..., max_seq_length, embd_dim]
     '''
-    with tf.variable_scope(name):
+    with tf.variable_scope(name, reuse=reuse):
         embd_matrix = embd.get_embedding_matrix_tensor()
         embd_seq = tf.nn.embedding_lookup(embd_matrix,
                                           seq,

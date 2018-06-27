@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 def fused_birnn(fused_rnn, inputs, sequence_length, initial_state=(None, None), dtype=None, scope=None,
-                time_major=False):
+                time_major=False, with_backward=True):
     with tf.variable_scope(scope or "BiRNN"):
         sequence_length = tf.cast(sequence_length, tf.int32)
         if not time_major:
@@ -10,18 +10,25 @@ def fused_birnn(fused_rnn, inputs, sequence_length, initial_state=(None, None), 
 
         outputs_fw, state_fw = fused_rnn(inputs, sequence_length=sequence_length, initial_state=initial_state[0],
                                          dtype=dtype, scope="FW")
-        outputs_bw, state_bw = fused_rnn_backward(fused_rnn, inputs, sequence_length, initial_state[1], dtype,
-                                                  scope="BW")
+
+        if with_backward:
+            outputs_bw, state_bw = fused_rnn_backward(fused_rnn, inputs, sequence_length, initial_state[1], dtype,
+                                                      scope="BW")
 
     if not time_major:
         outputs_fw = tf.transpose(outputs_fw, [1, 0, 2])
-        outputs_bw = tf.transpose(outputs_bw, [1, 0, 2])
+        if with_backward:
+            outputs_bw = tf.transpose(outputs_bw, [1, 0, 2])
 
     if type(state_fw) is tf.contrib.rnn.LSTMStateTuple:
         state_fw = state_fw.c
-        state_bw = state_bw.c
+        if with_backward:
+            state_bw = state_bw.c
 
-    return (outputs_fw, outputs_bw), (state_fw, state_bw)
+    if with_backward:
+        return (outputs_fw, outputs_bw), (state_fw, state_bw)
+    else:
+        return outputs_fw, state_fw
 
 
 def fused_rnn_backward(fused_rnn, inputs, sequence_length, initial_state=None, dtype=None, scope=None,

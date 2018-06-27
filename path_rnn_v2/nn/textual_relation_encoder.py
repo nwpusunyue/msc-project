@@ -39,6 +39,7 @@ def encode_relation(rel_seq, rel_length, embd,
     return rel_repr
 
 
+# TEST
 if __name__ == '__main__':
     batch_size = 2
     max_path_length = 2
@@ -82,7 +83,6 @@ if __name__ == '__main__':
     test_rel_length[0, 1] = len(t2)
     test_rel_seq[1, 0, :len(t3)] = t3
     test_rel_length[1, 0] = len(t3)
-
 
     print('Test relation sequence:\n {}'.format(test_rel_seq))
     print('Test relation lengths:\n {}'.format(test_rel_length))
