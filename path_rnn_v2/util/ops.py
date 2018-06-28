@@ -8,6 +8,8 @@ def extract_axis_1(data, ind):
     :param ind: Indices to take (one for each element along axis 0 of data).
     :return: Subsetted tensor.
     """
+    # ensure all indices are positive
+    ind = tf.nn.relu(ind)
     batch_range = tf.range(tf.shape(data, out_type=ind.dtype)[0], dtype=ind.dtype)
     indices = tf.stack([batch_range, ind], axis=1)
     res = tf.gather_nd(data, indices)

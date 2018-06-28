@@ -1,9 +1,14 @@
+import os
+
 import numpy as np
 import tensorflow as tf
 
 from path_rnn_v2.util import rnn
 from path_rnn_v2.util.activations import activation_from_string
 from path_rnn_v2.util.ops import extract_axis_1, replace_val
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', reuse=False, activation=None,
@@ -45,6 +50,10 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
 
             # [batch_size, input_dim]
             out = tf.reduce_sum(sequence, axis=1) / tf.cast(tf.expand_dims(seq_length, axis=1), dtype=sequence.dtype)
+        elif module == 'identity':
+            # should only be called when max_seq_len is 1
+            # converts [batch_size, 1, input_dim] to [batch_size, input_dim]
+            out = tf.squeeze(sequence)
 
         if activation:
             out = activation_from_string(activation)(out)
@@ -85,6 +94,7 @@ if __name__ == '__main__':
     batch_size = 3
     max_sequence_length = 5
     input_dim = 10
+    repr_dim = 15
 
     test_seq_length = [3, 4, 0]
     test_sequence = np.zeros([batch_size, max_sequence_length, input_dim])
@@ -95,10 +105,12 @@ if __name__ == '__main__':
     sequence = tf.placeholder(tf.float32, shape=[None, None, input_dim])
     seq_length = tf.placeholder(tf.int32, shape=[None])
 
-    encoded = encoder(sequence, seq_length, module='average')
+    avg_encoded = encoder(sequence, seq_length, module='average', name='average')
+    gru_encoded = encoder(sequence, seq_length, module='gru', repr_dim=repr_dim, name='gru')
+    identity_encoded = encoder(sequence, seq_length, module='identity', name='identity')
 
     with tf.train.MonitoredTrainingSession() as sess:
-        test_encoded = sess.run(encoded,
+        test_encoded = sess.run(avg_encoded,
                                 feed_dict={
                                     sequence: test_sequence,
                                     seq_length: test_seq_length
@@ -107,15 +119,28 @@ if __name__ == '__main__':
         assert test_encoded[1, 0] == 2.5
         assert test_encoded[2, 0] == 0.0
 
-    tf.reset_default_graph()
-
-    sequence = tf.placeholder(tf.float32, shape=[batch_size, max_sequence_length, input_dim])
-    seq_length = tf.placeholder(tf.int32, shape=[batch_size])
-
-    encoded = encoder(sequence, seq_length, module='gru', repr_dim=15)
-    with tf.train.MonitoredTrainingSession() as sess:
-        test_encoded = sess.run(encoded,
+        test_encoded = sess.run(gru_encoded,
                                 feed_dict={
                                     sequence: test_sequence,
                                     seq_length: test_seq_length
                                 })
+
+        assert test_encoded.shape == (batch_size, repr_dim * 2)
+        assert (test_encoded[2, :] == 0).all()
+
+        test_sequence = np.zeros([batch_size, 1, input_dim])
+        test_seq_length = np.ones([batch_size])
+
+        for i in range(batch_size):
+            test_sequence[i, :] = i
+
+        test_encoded = sess.run(identity_encoded,
+                                feed_dict={
+                                    sequence: test_sequence,
+                                    seq_length: test_seq_length
+                                })
+
+        assert test_encoded.shape == (batch_size, input_dim)
+        assert (test_encoded[0] == 0).all()
+        assert (test_encoded[1] == 1).all()
+        assert (test_encoded[2] == 2).all()
