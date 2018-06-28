@@ -124,8 +124,8 @@ class ChainsOfReasoningModel(BaseModel):
 
         tf.summary.scalar('train_loss', self.tensors['loss'], collections=['summary_train'])
         tf.summary.scalar('test_loss', mean_loss, collections=['summary_test'])
-        tf.summary.scalar('test_acc', acc, collections=['summary_test'])
         tf.summary.scalar('train_eval_loss', mean_loss, collections=['summary_train_eval'])
+        tf.summary.scalar('test_acc', acc, collections=['summary_test'])
         tf.summary.scalar('train_eval_acc', acc, collections=['summary_train_eval'])
 
     def _setup_placeholders(self, max_path_len):

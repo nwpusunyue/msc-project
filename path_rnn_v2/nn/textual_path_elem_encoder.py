@@ -2,41 +2,40 @@ import numpy as np
 import tensorflow as tf
 
 from parsing.special_tokens import *
-from path_rnn_v2.util.embeddings import embed_sequence, Word2VecEmbeddings
+from path_rnn_v2.util.embeddings import Word2VecEmbeddings
 from path_rnn_v2.util.sequence_encoder import encoder
 
 
-def encode_relation(rel_seq, rel_length, embd,
-                    seq_embedder_params, seq_encoder_params, name='textual_relation_encoder'):
+def encode_path_elem(elem_seq, elem_length, embd,
+                     seq_embedder_params, seq_encoder_params, name='path_elem_encoder'):
     '''
 
-    :param rel_seq: [batch_size, max_path_length, max_rel_length]
-    :param rel_length: [bath_size, max_path_length]
+    :param elem_seq: [batch_size, max_path_length, max_elem_length]
+    :param elem_length: [bath_size, max_path_length]
     :param embd: An instantiation of Embeddings class
     :param seq_embedder_params: kwargs for the embedder
     :param seq_encoder_params: kwargs for the encoder
     :param name: variable scope name
     :return:
     '''
+    # [batch_size, max_path_length, max_rel_length, embd_dim]
+    elem_seq_embd = embd.embed_sequence(seq=elem_seq, **seq_embedder_params)
     with tf.variable_scope(name):
-        # [batch_size, max_path_length, max_rel_length, embd_dim]
-        rel_seq_embd = embed_sequence(seq=rel_seq, embd=embd, **seq_embedder_params)
-
         # max_path_length x [batch_size]
-        rel_length_unstacked = tf.unstack(rel_length, axis=1)
+        elem_length_unstacked = tf.unstack(elem_length, axis=1)
         # max_path_length x [batch_size, max_rel_length, embd_dim]
-        rel_seq_unstacked = tf.unstack(rel_seq_embd, axis=1)
+        elem_seq_unstacked = tf.unstack(elem_seq_embd, axis=1)
 
-        rel_seq_repr_unstacked = []
-        for seq, len in zip(rel_seq_unstacked, rel_length_unstacked):
+        elem_seq_repr_unstacked = []
+        for seq, len in zip(elem_seq_unstacked, elem_length_unstacked):
             # [batch_size, repr_dim]
             output = encoder(seq, len, reuse=tf.AUTO_REUSE, **seq_encoder_params)
-            rel_seq_repr_unstacked.append(output)
+            elem_seq_repr_unstacked.append(output)
 
         # [batch_size, max_path_length, repr_dim]
-        rel_repr = tf.stack(rel_seq_repr_unstacked, axis=1)
+        elem_repr = tf.stack(elem_seq_repr_unstacked, axis=1)
 
-    return rel_repr
+    return elem_repr
 
 
 # TEST
@@ -94,20 +93,20 @@ if __name__ == '__main__':
     rel_len = tf.placeholder(tf.int32,
                              shape=[None,
                                     max_path_length])
-    rel_repr = encode_relation(rel_seq, rel_len, embd,
-                               seq_embedder_params={'name': 'test_embd',
-                                                    'with_projection': False},
-                               seq_encoder_params={
-                                   'module': 'average'
-                               })
-    rel_repr_lstm = encode_relation(rel_seq, rel_len, embd,
-                                    name='lstm_encoder',
-                                    seq_embedder_params={'name': 'test_embd',
-                                                         'with_projection': False},
-                                    seq_encoder_params={
-                                        'module': 'lstm',
-                                        'repr_dim': repr_dim
-                                    })
+    rel_repr = encode_path_elem(rel_seq, rel_len, embd,
+                                seq_embedder_params={'name': 'test_embd',
+                                                     'with_projection': False},
+                                seq_encoder_params={
+                                    'module': 'average'
+                                })
+    rel_repr_lstm = encode_path_elem(rel_seq, rel_len, embd,
+                                     name='lstm_encoder',
+                                     seq_embedder_params={'name': 'test_embd',
+                                                          'with_projection': False},
+                                     seq_encoder_params={
+                                         'module': 'lstm',
+                                         'repr_dim': repr_dim
+                                     })
 
     for op in tf.get_default_graph().get_operations():
         print(str(op.name))
