@@ -12,6 +12,7 @@ from path_rnn_v2.util.embeddings import RandomEmbeddings
 from path_rnn_v2.util.ops import create_reset_metric
 from path_rnn_v2.nn.base_model import BaseModel
 from path_rnn_v2.nn.path_rnn import PathRnn
+from sklearn.metrics import average_precision_score
 from tqdm import tqdm
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -51,7 +52,8 @@ def get_numpy_arrays(embd, rel_paths, target_rel, label, max_path_len=None):
             indexed_target_rel[path_idx] = embd.get_idx(target)
 
             for rel_idx, rel in enumerate(rel_path):
-                indexed_rel_path[path_idx, rel_idx] = embd.get_idx(rel)
+                if rel_idx < max_path_len:
+                    indexed_rel_path[path_idx, rel_idx] = embd.get_idx(rel)
             path_idx += 1
         partition_end = path_idx
         path_partition[query_idx, 0] = partition_start
@@ -165,7 +167,6 @@ class ChainsOfReasoningModel(BaseModel):
         return loss
 
     def eval_step(self, batch, sess, reset=False, summ_writer=None, summ_collection=None):
-
         if batch is not None:
             sess.run([self.tensors['update_op_loss'], self.tensors['update_op_acc']],
                      feed_dict=self.convert_to_feed_dict(batch))
@@ -179,6 +180,10 @@ class ChainsOfReasoningModel(BaseModel):
         if reset:
             sess.run([self.tensors['reset_op_loss'], self.tensors['reset_op_acc']])
         return loss, acc
+
+    def predict_step(self, batch, sess):
+        return sess.run(self.tensors['prob'],
+                        feed_dict=self.convert_to_feed_dict(batch))
 
     @property
     def params_str(self):
@@ -202,10 +207,13 @@ class ChainsOfReasoningModel(BaseModel):
 
 
 if __name__ == '__main__':
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
+                                                      per_process_gpu_memory_fraction=0.33))
+    relation = '_people_person_nationality'
     train, dev = get_dataset(
-        pos_path='./chains_of_reasoning_data/_people_person_nationality/parsed/positive_matrix.json',
-        neg_path='./chains_of_reasoning_data/_people_person_nationality/parsed/negative_matrix.json',
-        dev_path='./chains_of_reasoning_data/_people_person_nationality/parsed/dev_matrix.json')
+        pos_path='./chains_of_reasoning_data/{}/parsed/positive_matrix.json'.format(relation),
+        neg_path='./chains_of_reasoning_data/{}/parsed/negative_matrix.json'.format(relation),
+        dev_path='./chains_of_reasoning_data/{}/parsed/dev_matrix.json'.format(relation))
 
     relation_vocab = set(chain.from_iterable(list(chain.from_iterable(train['relation_paths']))))
     relation_vocab.add('#UNK')
@@ -293,12 +301,11 @@ if __name__ == '__main__':
                                                   batch_size=20,
                                                   permute=False)
 
-    num_epocs = 1
-    steps = 10000
+    steps = 1000
     check_period = 50
 
-    with tf.train.MonitoredTrainingSession() as sess:
-        summ_writer = tf.summary.FileWriter('./chains_of_reasoning_logs/run_{}'.format(time.time()))
+    with tf.train.MonitoredTrainingSession(config=config) as sess:
+        summ_writer = tf.summary.FileWriter('./chains_of_reasoning_logs/run_{}_{}'.format(relation, time.time()))
         for i in tqdm(range(steps)):
             batch = train_batch_generator.get_batch()
             batch_loss = model.train_step(batch, sess, summ_writer=summ_writer)
@@ -309,11 +316,19 @@ if __name__ == '__main__':
 
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_train_eval')
+
+                dev_prob = np.array([])
+                dev_label = np.array([])
+
                 print('Train loss: {} Train acc: {}'.format(metrics[0], metrics[1]))
                 for j in range(dev_batch_generator.batch_count):
                     batch = dev_batch_generator.get_batch()
                     model.eval_step(batch, sess)
+                    dev_prob = np.concatenate((dev_prob, model.predict_step(batch, sess)))
+                    dev_label = np.concatenate((dev_label, batch['label']))
+
+                ap = average_precision_score(y_true=dev_label, y_score=dev_prob)
 
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_test')
-                print('Dev loss: {} Dev acc: {}'.format(metrics[0], metrics[1]))
+                print('Dev loss: {} Dev acc: {} Dev ap: {}'.format(metrics[0], metrics[1], ap))
