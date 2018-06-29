@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from itertools import chain
 from path_rnn_v2.util.batch_generator import PartitionBatchGenerator
-from path_rnn_v2.util.embeddings import RandomEmbeddings, embed_sequence
+from path_rnn_v2.util.embeddings import RandomEmbeddings
 from path_rnn_v2.util.ops import create_reset_metric
 from path_rnn_v2.nn.path_rnn import PathRnn
 from tqdm import tqdm

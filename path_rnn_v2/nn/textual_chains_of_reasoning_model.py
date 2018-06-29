@@ -188,6 +188,10 @@ class TextualChainsOfReasoningModel(BaseModel):
             sess.run(self.tensors['reset_op_loss'])
         return loss
 
+    def predict_step(self, batch, sess):
+        return sess.run(self.tensors['prob'],
+                        feed_dict=self.convert_to_feed_dict(batch))
+
 
 if __name__ == '__main__':
     emb_dim = 50

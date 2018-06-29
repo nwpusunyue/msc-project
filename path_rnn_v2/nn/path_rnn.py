@@ -33,7 +33,7 @@ class PathRnn:
         '''
 
         if ent_seq is not None:
-            seq = tf.concat([rel_seq, ent_seq], axis=1)
+            seq = tf.concat([rel_seq, ent_seq], axis=2)
         else:
             seq = rel_seq
 

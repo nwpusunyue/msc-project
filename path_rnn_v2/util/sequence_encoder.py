@@ -53,7 +53,7 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
         elif module == 'identity':
             # should only be called when max_seq_len is 1
             # converts [batch_size, 1, input_dim] to [batch_size, input_dim]
-            out = tf.squeeze(sequence)
+            out = tf.squeeze(sequence, axis=1)
 
         if activation:
             out = activation_from_string(activation)(out)

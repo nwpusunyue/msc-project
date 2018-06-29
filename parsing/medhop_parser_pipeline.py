@@ -9,7 +9,6 @@ from nltk.tokenize import TreebankWordTokenizer, WordPunctTokenizer
 from parsing.medhop_graph_extraction import preprocess_medhop
 from parsing.medhop_path_extraction import extract_paths_dataset
 
-
 np.random.seed(0)
 
 tokenizer = {
