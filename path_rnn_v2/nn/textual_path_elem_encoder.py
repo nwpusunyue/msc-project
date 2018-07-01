@@ -27,9 +27,10 @@ def encode_path_elem(elem_seq, elem_length, embd,
         elem_seq_unstacked = tf.unstack(elem_seq_embd, axis=1)
 
         elem_seq_repr_unstacked = []
+
         for seq, len in zip(elem_seq_unstacked, elem_length_unstacked):
-            # [batch_size, repr_dim]
             output = encoder(seq, len, reuse=tf.AUTO_REUSE, **seq_encoder_params)
+
             elem_seq_repr_unstacked.append(output)
 
         # [batch_size, max_path_length, repr_dim]

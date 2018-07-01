@@ -1,5 +1,6 @@
 import os
 import pickle
+import pprint
 import time
 
 import numpy as np
@@ -13,8 +14,10 @@ from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
 from path_rnn_v2.util.tensor_generator import get_medhop_tensors
 from tqdm import tqdm
 
+np.random.seed(0)
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+pd.set_option('display.max_colwidth', -1)
 
 
 def medhop_accuracy(dataset, probs):
@@ -33,15 +36,18 @@ if __name__ == '__main__':
     path = './data'
     num_epochs = 50
 
+    limit = 100
+    method = 'shortest'
+
     train = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit=100_method=shortest_tokenizer=punkt_medhop_train.json'.format(path))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_train.json'.format(path, limit, method))
     dev = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit=100_method=shortest_tokenizer=punkt_medhop_dev.json'.format(path))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_dev.json'.format(path, limit, method))
 
     train_document_store = pickle.load(open('{}/train_doc_store_punkt.pickle'.format(path), 'rb'))
     dev_document_store = pickle.load(open('{}/dev_doc_store_punkt.pickle'.format(path), 'rb'))
 
-    max_rel_len = train_document_store.max_tokens
+    max_rel_len = max(train_document_store.max_tokens, dev_document_store.max_tokens)
 
     word2vec_embeddings = Word2VecEmbeddings('./medhop_word2vec_punkt',
                                              name='token_embd',
@@ -137,6 +143,7 @@ if __name__ == '__main__':
         },
         'relation_encoder_params': {
             'module': 'average',
+            'name': 'relation_average_encoder',
             'repr_dim': emb_dim,
             'activation': None,
             'dropout': None,
@@ -156,6 +163,7 @@ if __name__ == '__main__':
         },
         'entity_encoder_params': {
             'module': 'identity',
+            'name': 'entity_identity_encoder',
             'activation': None,
             'dropout': None
         },
@@ -171,6 +179,7 @@ if __name__ == '__main__':
         'path_encoder_params': {
             'repr_dim': emb_dim,
             'module': 'lstm',
+            'name': 'path_encoder',
             'activation': None,
             'dropout': None,
             'extra_args': {
@@ -193,17 +202,35 @@ if __name__ == '__main__':
 
     model = TextualChainsOfReasoningModel(model_params, train_params)
     print(model.params_str)
+    print(pprint.pformat(model.train_variables))
 
     steps = train_batch_generator.batch_count * num_epochs
-    check_period = 10
+    check_period = 20
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
-                                                      per_process_gpu_memory_fraction=0.5))
-    with tf.train.MonitoredTrainingSession(config=config) as sess:
-        summ_writer = tf.summary.FileWriter('./textual_chains_of_reasoning_logs/run_{}'.format(time.strftime('%X_%x')))
-        summ_writer.add_graph(tf.get_default_graph())
+                                                      per_process_gpu_memory_fraction=1.0))
+
+    medhop_acc = []
+    max_dev_medhop_acc = 0.0
+
+    start_time = time.strftime('%X_%d.%m.%y')
+    model_dir = './textual_chains_of_reasoning_models/run_{}'.format(start_time)
+    log_dir = './textual_chains_of_reasoning_logs/run_{}'.format(start_time)
+    acc_dir = './textual_chains_of_reasoning_logs/acc_run_{}.txt'.format(start_time)
+
+    # make save dir
+    os.makedirs(model_dir)
+    # make summary writer
+    summ_writer = tf.summary.FileWriter(log_dir)
+    summ_writer.add_graph(tf.get_default_graph())
+    # make acc file
+    acc_file = open(acc_dir, 'w+')
+
+    with tf.Session(config=config) as sess:
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
+
         for i in tqdm(range(steps)):
             batch = train_batch_generator.get_batch()
-
             batch_loss = model.train_step(batch, sess, summ_writer=summ_writer)
 
             if i % check_period == 0:
@@ -217,8 +244,9 @@ if __name__ == '__main__':
 
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_train_eval')
+                train_eval_medhop_acc = medhop_accuracy(train, train_eval_prob)
 
-                print('Train loss: {} Train medhop acc: {}'.format(metrics, medhop_accuracy(train, train_eval_prob)))
+                print('Train loss: {} Train medhop acc: {}'.format(metrics, train_eval_medhop_acc))
 
                 dev_prob = np.array([])
 
@@ -230,4 +258,15 @@ if __name__ == '__main__':
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_test')
 
-                print('Dev loss: {} Dev medhop acc: {}'.format(metrics, medhop_accuracy(dev, dev_prob)))
+                dev_medhop_acc = medhop_accuracy(dev, dev_prob)
+
+                print('Dev loss: {} Dev medhop acc: {}'.format(metrics, dev_medhop_acc))
+
+                medhop_acc.append((train_eval_medhop_acc, dev_medhop_acc))
+                acc_file.write('{}: tr: {} dev: {}\n'.format(i, train_eval_medhop_acc, dev_medhop_acc))
+                acc_file.flush()
+
+                if dev_medhop_acc > max_dev_medhop_acc:
+                    print('Storing model with best dev medhop acc at: {}'.format(model_dir))
+                    max_dev_medhop_acc = dev_medhop_acc
+                    model.store(sess, '{}/model'.format(model_dir))

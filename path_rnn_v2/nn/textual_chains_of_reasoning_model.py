@@ -24,6 +24,7 @@ class TextualChainsOfReasoningModel(BaseModel):
         self._setup_evaluation()
         self._setup_summaries()
         self._variables = tf.global_variables()
+        self._saver = tf.train.Saver()
 
     def _setup_model(self, model_params):
         self.max_path_len = model_params['max_path_len']

@@ -95,11 +95,11 @@ class BaseModel(ABC):
     def variables(self):
         return self._variables
 
-    def store(self, path):
-        self._saver.save(self.tf_session, path)
+    def store(self, sess, path):
+        self._saver.save(sess, path)
 
-    def load(self, path):
-        self._saver.restore(self.tf_session, path)
+    def load(self, sess, path):
+        self._saver.restore(sess, path)
 
     def convert_to_feed_dict(self, mapping):
         result = {ph: mapping[ph_name] for ph_name, ph in self.placeholders.items() if ph_name in mapping}
