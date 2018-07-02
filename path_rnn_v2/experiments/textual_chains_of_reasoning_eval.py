@@ -23,7 +23,6 @@ def medhop_accuracy(dataset, probs):
     grouped = dataset.groupby(['id']).agg({'label': list, 'prob': list, 'source': list})
     grouped['correct'] = grouped.apply(lambda row: int(np.argmax(row['label']) == np.argmax(row['prob'])), axis=1)
     accuracy = grouped['correct'].sum() / len(grouped)
-    grouped.to_json('lets_see_wtf_happens_here.json')
     return accuracy
 
 

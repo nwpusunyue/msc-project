@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 import pprint
@@ -19,6 +20,21 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 pd.set_option('display.max_colwidth', -1)
 
+# Instantiate the parser
+parser = argparse.ArgumentParser()
+parser.add_argument('--emb_dim',
+                    type=float,
+                    default=200,
+                    help='Size of path-rnn embeddings')
+parser.add_argument('--l2',
+                    type=float,
+                    default=0.0,
+                    help='L2 loss regularization')
+parser.add_argument('--dropout',
+                    type=float,
+                    default=0.0,
+                    help='Path rnn dropout prob')
+
 
 def medhop_accuracy(dataset, probs):
     dataset['prob'] = probs
@@ -29,7 +45,12 @@ def medhop_accuracy(dataset, probs):
 
 
 if __name__ == '__main__':
-    emb_dim = 200
+    # cmd line args
+    args = parser.parse_args()
+    emb_dim = args.emb_dim
+    l2 = args.l2
+    dropout = args.dropout
+
     max_path_len = 5
     max_ent_len = 1
     batch_size = 20
@@ -181,7 +202,7 @@ if __name__ == '__main__':
             'module': 'lstm',
             'name': 'path_encoder',
             'activation': None,
-            'dropout': None,
+            'dropout': dropout,
             'extra_args': {
                 'with_backward': False,
                 'with_projection': False
@@ -195,7 +216,7 @@ if __name__ == '__main__':
 
     train_params = {
         'optimizer': tf.train.AdamOptimizer(learning_rate=1e-3),
-        'l2': 0.0,
+        'l2': l2,
         'clip_op': None,
         'clip': None
     }
@@ -213,9 +234,12 @@ if __name__ == '__main__':
     max_dev_medhop_acc = 0.0
 
     start_time = time.strftime('%X_%d.%m.%y')
+    print('Run id: run_{}'.format(start_time))
     model_dir = './textual_chains_of_reasoning_models/run_{}'.format(start_time)
     log_dir = './textual_chains_of_reasoning_logs/run_{}'.format(start_time)
     acc_dir = './textual_chains_of_reasoning_logs/acc_run_{}.txt'.format(start_time)
+
+    exit(0)
 
     # make save dir
     os.makedirs(model_dir)
