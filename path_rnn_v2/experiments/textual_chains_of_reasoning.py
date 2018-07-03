@@ -15,15 +15,16 @@ from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
 from path_rnn_v2.util.tensor_generator import get_medhop_tensors
 from tqdm import tqdm
 
+
 np.random.seed(0)
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-pd.set_option('display.max_colwidth', -1)
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# pd.set_option('display.max_colwidth', -1)
 
 # Instantiate the parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--emb_dim',
-                    type=float,
+                    type=int,
                     default=200,
                     help='Size of path-rnn embeddings')
 parser.add_argument('--l2',
@@ -227,29 +228,28 @@ if __name__ == '__main__':
 
     steps = train_batch_generator.batch_count * num_epochs
     check_period = 20
-    config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
-                                                      per_process_gpu_memory_fraction=1.0))
+    # config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
+    #                                                   per_process_gpu_memory_fraction=1.0))
 
     medhop_acc = []
     max_dev_medhop_acc = 0.0
 
     start_time = time.strftime('%X_%d.%m.%y')
-    print('Run id: run_{}'.format(start_time))
-    model_dir = './textual_chains_of_reasoning_models/run_{}'.format(start_time)
-    log_dir = './textual_chains_of_reasoning_logs/run_{}'.format(start_time)
-    acc_dir = './textual_chains_of_reasoning_logs/acc_run_{}.txt'.format(start_time)
-
-    exit(0)
+    run_id = 'run_{}_emb_dim={}_l2={}_drop={}'.format(start_time, emb_dim, l2, dropout)
+    print('Run id: {}'.format(run_id))
+    model_dir = './textual_chains_of_reasoning_models/{}'.format(run_id)
+    log_dir = './textual_chains_of_reasoning_logs/{}'.format(run_id)
+    acc_dir = './textual_chains_of_reasoning_logs/acc_{}.txt'.format(run_id)
 
     # make save dir
     os.makedirs(model_dir)
-    # make summary writer
+    # make summary writercl
     summ_writer = tf.summary.FileWriter(log_dir)
     summ_writer.add_graph(tf.get_default_graph())
     # make acc file
     acc_file = open(acc_dir, 'w+')
 
-    with tf.Session(config=config) as sess:
+    with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
 

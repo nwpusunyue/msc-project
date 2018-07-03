@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 import pprint
@@ -26,8 +27,24 @@ def medhop_accuracy(dataset, probs):
     return accuracy
 
 
+# Instantiate the parser
+parser = argparse.ArgumentParser()
+parser.add_argument('model_path',
+                    type=str,
+                    help='Path to model')
+parser.add_argument('--emb_dim',
+                    type=int,
+                    default=200,
+                    help='Embedding dimension')
+parser.add_argument('--l2',
+                    type=float,
+                    default=0.0,
+                    help='L2 loss regularization')
+
 if __name__ == '__main__':
-    emb_dim = 200
+    args = parser.parse_args()
+    emb_dim = args.emb_dim
+    l2 = args.l2
     max_path_len = 5
     max_ent_len = 1
     batch_size = 20
@@ -214,7 +231,7 @@ if __name__ == '__main__':
 
     train_params = {
         'optimizer': tf.train.AdamOptimizer(learning_rate=1e-3),
-        'l2': 0.0,
+        'l2': l2,
         'clip_op': None,
         'clip': None
     }
@@ -226,9 +243,10 @@ if __name__ == '__main__':
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                       per_process_gpu_memory_fraction=1.0))
 
+    print('Evaluating model: {}'.format(args.model_path))
     with tf.Session(config=config) as sess:
         sess.run(tf.local_variables_initializer())
-        model.load(sess, path='./textual_chains_of_reasoning_models/run_16:39:20_01.07.18/model')
+        model.load(sess, path=args.model_path)
 
         train_eval_prob = np.array([])
 
