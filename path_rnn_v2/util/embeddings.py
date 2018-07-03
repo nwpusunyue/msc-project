@@ -1,5 +1,4 @@
 import logging
-import os
 
 import gensim
 import numpy as np
@@ -10,9 +9,6 @@ from path_rnn_v2.util.activations import activation_from_string
 from parsing.special_tokens import *
 
 logger = logging.getLogger(__name__)
-
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = ''
 
 
 def load_embedding_matrix(word2vec_path):

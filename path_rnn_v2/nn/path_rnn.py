@@ -20,7 +20,7 @@ class PathRnn:
         elif aggregator == 'topk':
             return tf.reduce_mean(tf.nn.top_k(scores, k=k)[0])
 
-    def encode_path(self, rel_seq, seq_len, encoder_params, ent_seq=None):
+    def encode_path(self, rel_seq, seq_len, encoder_params, ent_seq=None, is_eval=True):
         '''
 
         :param rel_seq: [batch_size, max_path_length, rel_repr_dim]
@@ -29,6 +29,7 @@ class PathRnn:
         :param ent_seq: if not None, then each element in the path will be formed from the concatenation of
         the entity_repr and relation_repr. The ent_seq  must have same batch_size, max_path_length dimensions
         [batch_size, max_path_length, ent_repr_dim]
+        :param is_eval: whether the tensors are for eval or train => influences dropout
         :return: [batch_size, repr_dim]
         '''
 
@@ -38,11 +39,11 @@ class PathRnn:
             seq = rel_seq
 
         # [batch_size, repr_dim]
-        enc_seq = encoder(seq, seq_len, **encoder_params)
+        enc_seq = encoder(seq, seq_len, is_eval=is_eval, **encoder_params)
 
         return enc_seq
 
-    def get_output(self, rel_seq, seq_len, path_partitions, target_rel, encoder_params, ent_seq=None,
+    def get_output(self, rel_seq, seq_len, path_partitions, target_rel, encoder_params, ent_seq=None, is_eval=True,
                    aggregator='logsumexp', k=1):
         '''
 
@@ -56,12 +57,14 @@ class PathRnn:
         :param ent_seq: if not None, then each element in the path will be formed from the concatenation of
         the entity_repr and relation_repr. The ent_seq  must have same batch_size, max_path_length dimensions
         [batch_size, max_path_length, ent_repr_dim]
+        :param is_eval: whether the tensors are for eval or train => influences dropout
         :param aggregator: 'logsumexp', 'max', 'avg', 'topk' - how to aggreagate the path scores for a certain triplet
+        :param k: used if top_k aggregator is specified
         :return:
         [num_queries] - the aggregated score for each query in the batch
         '''
         # [batch_size, repr_dim]
-        enc_path = self.encode_path(rel_seq, seq_len, encoder_params, ent_seq)
+        enc_path = self.encode_path(rel_seq, seq_len, encoder_params, ent_seq, is_eval)
 
         # [batch_size]
         path_score = tf.reduce_sum(tf.multiply(enc_path, target_rel), axis=1)

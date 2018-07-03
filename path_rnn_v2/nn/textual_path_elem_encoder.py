@@ -7,7 +7,7 @@ from path_rnn_v2.util.sequence_encoder import encoder
 
 
 def encode_path_elem(elem_seq, elem_length, embd,
-                     seq_embedder_params, seq_encoder_params, name='path_elem_encoder'):
+                     seq_embedder_params, seq_encoder_params, is_eval=True, name='path_elem_encoder'):
     '''
 
     :param elem_seq: [batch_size, max_path_length, max_elem_length]
@@ -15,6 +15,7 @@ def encode_path_elem(elem_seq, elem_length, embd,
     :param embd: An instantiation of Embeddings class
     :param seq_embedder_params: kwargs for the embedder
     :param seq_encoder_params: kwargs for the encoder
+    :param is_eval: whether the tensors are for eval or train => influences dropout
     :param name: variable scope name
     :return:
     '''
@@ -29,7 +30,7 @@ def encode_path_elem(elem_seq, elem_length, embd,
         elem_seq_repr_unstacked = []
 
         for seq, len in zip(elem_seq_unstacked, elem_length_unstacked):
-            output = encoder(seq, len, reuse=tf.AUTO_REUSE, **seq_encoder_params)
+            output = encoder(seq, len, reuse=tf.AUTO_REUSE, is_eval=is_eval, **seq_encoder_params)
 
             elem_seq_repr_unstacked.append(output)
 

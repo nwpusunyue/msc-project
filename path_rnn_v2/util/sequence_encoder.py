@@ -7,21 +7,21 @@ from path_rnn_v2.util import rnn
 from path_rnn_v2.util.activations import activation_from_string
 from path_rnn_v2.util.ops import extract_axis_1, replace_val
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
 
 def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', reuse=False, activation=None,
-            dropout=None, extra_args=None):
+            dropout=None, is_eval=True, extra_args=None):
     '''
 
     :param sequence: [batch_size, max_sequence_length, input_dim] tensor
     :param seq_length: [batch_size]
     :param repr_dim: output representation size, in case a neural layer is used
     :param module: 'lstm', 'rnn', 'gru', 'dense', 'average'
+    :param name: scope name
+    :param reuse: scope reuse
     :param activation: if not None, the output is passed through the given activation
     :param dropout: if 0.0 output is passed through a dropout layer
-    :param kwargs:
+    :param is_eval: whether the tensors are for eval or train => influences dropout
+    :param extra_args:
     :return:
     '''
     if extra_args is None:
@@ -60,8 +60,8 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
 
         if dropout is not None:
             out = tf.cond(
-                tf.greater(dropout, 0.0),
-                lambda: tf.nn.dropout(out, 1.0 - dropout, noise_shape=[tf.shape(out)[0], 1, tf.shape(out)[-1]]),
+                tf.logical_and(tf.greater(dropout, 0.0), tf.logical_not(is_eval)),
+                lambda: tf.nn.dropout(out, 1.0 - dropout, noise_shape=[tf.shape(out)[0], tf.shape(out)[-1]]),
                 lambda: out)
     return out
 

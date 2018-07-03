@@ -9,9 +9,6 @@ from path_rnn_v2.nn.textual_path_elem_encoder import encode_path_elem
 from path_rnn_v2.util.embeddings import RandomEmbeddings
 from path_rnn_v2.util.ops import create_reset_metric
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 
 class TextualChainsOfReasoningModel(BaseModel):
 
@@ -51,10 +48,12 @@ class TextualChainsOfReasoningModel(BaseModel):
         # encode rel seq and ent seq
         # [batch_size, max_path_len, rel_repr_dim]
         rel_seq_enc = encode_path_elem(self.rel_seq, self.rel_len, self.rel_embedder, self.rel_embedder_params,
-                                       self.rel_encoder_params, name='rel_seq_encoder')
+                                       self.rel_encoder_params, is_eval=self.is_eval,
+                                       name='rel_seq_encoder')
         # [batch_size, max_path_len, ent_repr_dim]
         ent_seq_enc = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder, self.ent_embedder_params,
-                                       self.ent_encoder_params, name='ent_seq_encoder')
+                                       self.ent_encoder_params, is_eval=self.is_eval,
+                                       name='ent_seq_encoder')
 
         # [batch_size, target_rel_repr_dim]
         target_rel_enc = self.target_rel_embedder.embed_sequence(self.target_rel,
@@ -68,6 +67,7 @@ class TextualChainsOfReasoningModel(BaseModel):
                                     target_rel=target_rel_enc,
                                     path_partitions=self.partition,
                                     encoder_params=self.path_encoder_params,
+                                    is_eval=self.is_eval,
                                     **self.path_rnn_params)
 
         prob = tf.sigmoid(score)
@@ -118,6 +118,10 @@ class TextualChainsOfReasoningModel(BaseModel):
         self.label = tf.placeholder(tf.int32,
                                     shape=[None])
 
+        # bool
+        self.is_eval = tf.placeholder(tf.bool,
+                                      shape=())
+
         self._placeholders = {'rel_seq': self.rel_seq,
                               'ent_seq': self.ent_seq,
                               'seq_len': self.seq_len,
@@ -125,7 +129,8 @@ class TextualChainsOfReasoningModel(BaseModel):
                               'ent_len': self.ent_len,
                               'target_rel': self.target_rel,
                               'partition': self.partition,
-                              'label': self.label}
+                              'label': self.label,
+                              'is_eval': self.is_eval}
 
     @property
     def params_str(self):
@@ -162,6 +167,7 @@ class TextualChainsOfReasoningModel(BaseModel):
                                                                         pprint.pformat(self.train_params)))
 
     def train_step(self, batch, sess, summ_writer=None):
+        batch['is_eval'] = False
         if summ_writer is not None:
             summ, loss, _ = sess.run([self.tensors['summary_train'],
                                       self.tensors['loss'],
@@ -176,6 +182,7 @@ class TextualChainsOfReasoningModel(BaseModel):
 
     def eval_step(self, batch, sess, reset=False, summ_writer=None, summ_collection=None):
         if batch is not None:
+            batch['is_eval'] = True
             sess.run([self.tensors['update_op_loss']],
                      feed_dict=self.convert_to_feed_dict(batch))
 
