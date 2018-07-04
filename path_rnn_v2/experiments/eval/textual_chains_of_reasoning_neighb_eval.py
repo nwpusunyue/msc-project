@@ -27,6 +27,12 @@ def medhop_accuracy(dataset, probs):
     return accuracy
 
 
+def none_or_float(value):
+    if value == 'None':
+        return None
+    return float(value)
+
+
 # Instantiate the parser
 parser = argparse.ArgumentParser()
 parser.add_argument('model_path',
@@ -35,16 +41,31 @@ parser.add_argument('model_path',
 parser.add_argument('--emb_dim',
                     type=int,
                     default=200,
-                    help='Embedding dimension')
+                    help='Size of path-rnn embeddings')
 parser.add_argument('--l2',
                     type=float,
                     default=0.0,
                     help='L2 loss regularization')
-
+parser.add_argument('--dropout',
+                    type=none_or_float,
+                    default=None,
+                    help='Path rnn dropout prob')
+parser.add_argument('--neighb_dim',
+                    type=int,
+                    default=1,
+                    help='Size of local entity neighborhood')
+parser.add_argument('--label_smoothing',
+                    type=none_or_float,
+                    default=None,
+                    help='Label smoothing for regularization')
 if __name__ == '__main__':
     args = parser.parse_args()
     emb_dim = args.emb_dim
     l2 = args.l2
+    neighb_dim = args.neighb_dim
+    dropout = args.dropout
+    label_smoothing = args.label_smoothing
+
     max_path_len = 5
     max_ent_len = 1
     batch_size = 20
@@ -169,6 +190,7 @@ if __name__ == '__main__':
         'max_rel_len': max_rel_len,
         'max_ent_len': max_ent_len,
         'relation_embedder': word2vec_embeddings,
+        'label_smoothing': label_smoothing,
         'relation_embedder_params': {
             'max_norm': None,
             'with_projection': True,
@@ -198,10 +220,15 @@ if __name__ == '__main__':
             'reuse': True
         },
         'entity_encoder_params': {
-            'module': 'identity',
-            'name': 'entity_identity_encoder',
+            'module': 'average',
+            'name': 'entity_neighb_average_encoder',
+            'repr_dim': emb_dim,
             'activation': None,
-            'dropout': None
+            'dropout': None,
+            'extra_args': {
+                'with_backward': False,
+                'with_projection': False
+            }
         },
         'target_embedder': target_embeddings,
         'target_embedder_params': {
@@ -217,7 +244,7 @@ if __name__ == '__main__':
             'module': 'lstm',
             'name': 'path_encoder',
             'activation': None,
-            'dropout': None,
+            'dropout': dropout,
             'extra_args': {
                 'with_backward': False,
                 'with_projection': False
@@ -237,9 +264,6 @@ if __name__ == '__main__':
     }
 
     model = TextualChainsOfReasoningModel(model_params, train_params)
-    print(model.params_str)
-    print(pprint.pformat(model.train_variables))
-
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                       per_process_gpu_memory_fraction=1.0))
 

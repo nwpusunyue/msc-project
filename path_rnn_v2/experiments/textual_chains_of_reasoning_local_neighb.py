@@ -20,6 +20,13 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 pd.set_option('display.max_colwidth', -1)
 
+
+def none_or_float(value):
+    if value == 'None':
+        return None
+    return float(value)
+
+
 # Instantiate the parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--emb_dim',
@@ -31,9 +38,17 @@ parser.add_argument('--l2',
                     default=0.0,
                     help='L2 loss regularization')
 parser.add_argument('--dropout',
-                    type=float,
-                    default=0.0,
+                    type=none_or_float,
+                    default=None,
                     help='Path rnn dropout prob')
+parser.add_argument('--neighb_dim',
+                    type=int,
+                    default=1,
+                    help='Size of local entity neighborhood')
+parser.add_argument('--label_smoothing',
+                    type=none_or_float,
+                    default=None,
+                    help='Label smoothing for regularization')
 parser.add_argument('--paths_selection',
                     type=str,
                     default='shortest',
@@ -48,21 +63,30 @@ def medhop_accuracy(dataset, probs):
     return accuracy
 
 
+def max_entity_mentions(document_store):
+    max = 0
+    for doc_entities in document_store.document_entities:
+        for pos in doc_entities.values():
+            if len(pos) > max:
+                max = len(pos)
+    return max
+
+
 if __name__ == '__main__':
     # cmd line args
     args = parser.parse_args()
     emb_dim = args.emb_dim
+    neighb_dim = args.neighb_dim
     l2 = args.l2
+    label_smoothing = args.label_smoothing
     dropout = args.dropout
     method = args.paths_selection
 
     max_path_len = 5
-    max_ent_len = 1
-    batch_size = 10
+    batch_size = 20
     path = './data'
     num_epochs = 50
-
-    limit = 500
+    limit = 100
 
     train = pd.read_json(
         '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_train.json'.format(path, limit, method))
@@ -73,6 +97,10 @@ if __name__ == '__main__':
     dev_document_store = pickle.load(open('{}/dev_doc_store_punkt.pickle'.format(path), 'rb'))
 
     max_rel_len = max(train_document_store.max_tokens, dev_document_store.max_tokens)
+    max_ent_len = (2 * neighb_dim + 1) * \
+                  max(max_entity_mentions(train_document_store), max_entity_mentions(dev_document_store))
+
+    print('max ent len {}'.format(max_ent_len))
 
     word2vec_embeddings = Word2VecEmbeddings('./medhop_word2vec_punkt',
                                              name='token_embd',
@@ -108,7 +136,7 @@ if __name__ == '__main__':
                                            'truncate': False
                                        },
                                        ent_retrieve_params={
-                                           'neighb_size': 0
+                                           'neighb_size': neighb_dim
                                        })
     dev_tensors = get_medhop_tensors(dev['relation_paths'],
                                      dev['entity_paths'],
@@ -126,7 +154,7 @@ if __name__ == '__main__':
                                          'truncate': False
                                      },
                                      ent_retrieve_params={
-                                         'neighb_size': 0
+                                         'neighb_size': neighb_dim
                                      })
 
     (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = train_tensors
@@ -158,6 +186,7 @@ if __name__ == '__main__':
         'max_rel_len': max_rel_len,
         'max_ent_len': max_ent_len,
         'relation_embedder': word2vec_embeddings,
+        'label_smoothing': label_smoothing,
         'relation_embedder_params': {
             'max_norm': None,
             'with_projection': True,
@@ -187,10 +216,15 @@ if __name__ == '__main__':
             'reuse': True
         },
         'entity_encoder_params': {
-            'module': 'identity',
-            'name': 'entity_identity_encoder',
+            'module': 'average',
+            'name': 'entity_neighb_average_encoder',
+            'repr_dim': emb_dim,
             'activation': None,
-            'dropout': None
+            'dropout': None,
+            'extra_args': {
+                'with_backward': False,
+                'with_projection': False
+            }
         },
         'target_embedder': target_embeddings,
         'target_embedder_params': {
@@ -238,15 +272,20 @@ if __name__ == '__main__':
     max_dev_medhop_acc = 0.0
 
     start_time = time.strftime('%X_%d.%m.%y')
-    run_id = 'run_{}_emb_dim={}_l2={}_drop={}_paths={}'.format(start_time, emb_dim, l2, dropout, method)
+    run_id = 'run_neighb_{}_emb_dim={}_l2={}_drop={}_neighb_dim={}_smoothing={}_paths={}'.format(start_time,
+                                                                                                 emb_dim,
+                                                                                                 l2, dropout,
+                                                                                                 neighb_dim,
+                                                                                                 label_smoothing,
+                                                                                                 method)
     print('Run id: {}'.format(run_id))
-    model_dir = './textual_chains_of_reasoning_models/{}'.format(run_id)
-    log_dir = './textual_chains_of_reasoning_logs/{}'.format(run_id)
-    acc_dir = './textual_chains_of_reasoning_logs/acc_{}.txt'.format(run_id)
+    model_dir = './textual_chains_of_reasoning_models/baseline_neighb/{}'.format(run_id)
+    log_dir = './textual_chains_of_reasoning_logs/baseline_neighb/{}'.format(run_id)
+    acc_dir = './textual_chains_of_reasoning_logs/baseline_neighb/acc_{}.txt'.format(run_id)
 
     # make save dir
     os.makedirs(model_dir)
-    # make summary writercl
+    # make summary writer
     summ_writer = tf.summary.FileWriter(log_dir)
     summ_writer.add_graph(tf.get_default_graph())
     # make acc file
@@ -294,6 +333,6 @@ if __name__ == '__main__':
                 acc_file.flush()
 
                 if dev_medhop_acc > max_dev_medhop_acc:
-                    print('Storing model with best dev medhop acc at: {}'.format(model_dir))
+                    print('Storing model with best dev medhop acc ({}) at:\n {}'.format(dev_medhop_acc, model_dir))
                     max_dev_medhop_acc = dev_medhop_acc
                     model.store(sess, '{}/model'.format(model_dir))
