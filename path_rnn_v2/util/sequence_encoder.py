@@ -43,7 +43,7 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
             out = tf.layers.dense(sequence, repr_dim)
         elif module == 'average':
             # clip seq lengths such that if a sequence has 0 tokens
-            # division by 0 is avoided. It is assumed that a tesnor with
+            # division by 0 is avoided. It is assumed that a tensor with
             # 0 tokens is filled with a special PAD character which has a 0-filled
             # vector repr
             seq_length = replace_val(seq_length, 0, 1)
