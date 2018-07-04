@@ -27,6 +27,7 @@ class TextualChainsOfReasoningModel(BaseModel):
         self.max_path_len = model_params['max_path_len']
         self.max_rel_len = model_params['max_rel_len']
         self.max_ent_len = model_params['max_ent_len']
+        self.label_smoothing = model_params['label_smoothing'] if 'label_smoothing' in model_params else None
 
         self.rel_embedder = model_params['relation_embedder']
         self.rel_embedder_params = model_params['relation_embedder_params']
@@ -70,9 +71,16 @@ class TextualChainsOfReasoningModel(BaseModel):
                                     is_eval=self.is_eval,
                                     **self.path_rnn_params)
 
+        if self.label_smoothing is not None:
+            # [num_queries]
+            smoothed_label = tf.cast(self.label, dtype=score.dtype) * (
+                    1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        else:
+            smoothed_label = tf.cast(self.label, dtype=score.dtype)
+
         prob = tf.sigmoid(score)
         loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(self.label, dtype=score.dtype),
+            tf.nn.sigmoid_cross_entropy_with_logits(labels=smoothed_label,
                                                     logits=score))
 
         self._tensors['loss'] = loss
@@ -138,6 +146,7 @@ class TextualChainsOfReasoningModel(BaseModel):
                 'Max path length: {}\n'
                 'Max relation length: {}\n'
                 'Max entity length: {}\n'
+                'Label smoothing: {}\n'
                 'Relation Embedder params:\n'
                 '{}\n'
                 '{}\n'
@@ -156,6 +165,7 @@ class TextualChainsOfReasoningModel(BaseModel):
                 '============================================\n'.format(self.max_path_len,
                                                                         self.max_rel_len,
                                                                         self.max_ent_len,
+                                                                        self.label_smoothing,
                                                                         self.rel_embedder.config_str,
                                                                         pprint.pformat(self.rel_embedder_params),
                                                                         pprint.pformat(self.rel_encoder_params),
