@@ -33,12 +33,10 @@ class BaseModel(ABC):
         if global_step is None:
             global_step = tf.train.create_global_step()
 
-        gradients = optimizer.compute_gradients(loss=loss)
-        tf.summary.scalar('gradients_l2', tf.add_n([tf.nn.l2_loss(grad[0]) for grad in gradients]),
-                          collections=['summary_train'])
-
         if l2:
             loss += tf.add_n([tf.nn.l2_loss(v) for v in self.train_variables]) * l2
+
+        gradients = optimizer.compute_gradients(loss=loss)
         if clip:
             if clip_op == tf.clip_by_value:
                 gradients = [(tf.clip_by_value(grad, clip[0], clip[1]), var)
@@ -47,6 +45,8 @@ class BaseModel(ABC):
                 gradients = [(tf.clip_by_norm(grad, clip), var)
                              for grad, var in gradients if grad is not None]
 
+        tf.summary.scalar('gradients_l2', tf.add_n([tf.nn.l2_loss(grad[0]) for grad in gradients]),
+                          collections=['summary_train'])
         train_op = optimizer.apply_gradients(gradients, global_step)
 
         variable_size = lambda v: reduce(lambda x, y: x * y, v.get_shape().as_list()) if v.get_shape() else 1
