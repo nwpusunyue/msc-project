@@ -8,23 +8,23 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from parsing.special_tokens import *
-from path_rnn_v2.nn.textual_chains_of_reasoning_model import TextualChainsOfReasoningModel
+from path_rnn_v2.nn.distance_chains_of_reasoning_model import DistanceChainsOfReasoningModel
 from path_rnn_v2.util.batch_generator import PartitionBatchGenerator, ProportionedPartitionBatchGenerator
-from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
-from path_rnn_v2.util.tensor_generator import get_medhop_tensors
+from path_rnn_v2.util.embeddings import RandomEmbeddings
+from path_rnn_v2.util.tensor_generator import get_medhop_distance_tensors
 from tqdm import tqdm
 
 np.random.seed(0)
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 pd.set_option('display.max_colwidth', -1)
 
 # Instantiate the parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--emb_dim',
                     type=int,
-                    default=200,
+                    default=50,
                     help='Size of path-rnn embeddings')
 parser.add_argument('--l2',
                     type=float,
@@ -56,9 +56,8 @@ if __name__ == '__main__':
     dropout = args.dropout
     method = args.paths_selection
 
-    max_path_len = 5
-    max_ent_len = 1
-    batch_size = 20
+    max_path_len = 4
+    batch_size = 32
     path = './data'
     num_epochs = 50
 
@@ -72,18 +71,6 @@ if __name__ == '__main__':
     train_document_store = pickle.load(open('{}/train_doc_store_punkt.pickle'.format(path), 'rb'))
     dev_document_store = pickle.load(open('{}/dev_doc_store_punkt.pickle'.format(path), 'rb'))
 
-    max_rel_len = max(train_document_store.max_tokens, dev_document_store.max_tokens)
-
-    word2vec_embeddings = Word2VecEmbeddings('./medhop_word2vec_punkt',
-                                             name='token_embd',
-                                             unk_token=UNK,
-                                             trainable=False,
-                                             special_tokens=[(ENT_1, False),
-                                                             (ENT_2, False),
-                                                             (ENT_X, False),
-                                                             (UNK, False),
-                                                             (END, False),
-                                                             (PAD, True)])
     target_embeddings = RandomEmbeddings(train['relation'],
                                          name='target_rel_emb',
                                          embedding_size=emb_dim,
@@ -92,122 +79,53 @@ if __name__ == '__main__':
                                                                                      stddev=1.0,
                                                                                      dtype=tf.float64))
 
-    train_tensors = get_medhop_tensors(train['relation_paths'],
-                                       train['entity_paths'],
-                                       train['relation'],
-                                       train['label'],
-                                       train_document_store,
-                                       word2vec_embeddings,
-                                       word2vec_embeddings,
-                                       target_embeddings,
-                                       max_path_len=max_path_len,
-                                       max_rel_len=max_rel_len,
-                                       max_ent_len=max_ent_len,
-                                       rel_retrieve_params={
-                                           'replacement': (ENT_1, ENT_2),
-                                           'truncate': False
-                                       },
-                                       ent_retrieve_params={
-                                           'neighb_size': 0
-                                       })
-    dev_tensors = get_medhop_tensors(dev['relation_paths'],
-                                     dev['entity_paths'],
-                                     dev['relation'],
-                                     dev['label'],
-                                     dev_document_store,
-                                     word2vec_embeddings,
-                                     word2vec_embeddings,
-                                     target_embeddings,
-                                     max_path_len=max_path_len,
-                                     max_rel_len=max_rel_len,
-                                     max_ent_len=max_ent_len,
-                                     rel_retrieve_params={
-                                         'replacement': (ENT_1, ENT_2),
-                                         'truncate': False
-                                     },
-                                     ent_retrieve_params={
-                                         'neighb_size': 0
-                                     })
+    train_tensors = get_medhop_distance_tensors(query_rel_seq=train['relation_paths'],
+                                                query_ent_seq=train['entity_paths'],
+                                                query_target_rel=train['relation'],
+                                                query_label=train['label'],
+                                                max_path_len=max_path_len,
+                                                target_rel_embeddings=target_embeddings,
+                                                document_store=train_document_store)
 
-    (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = train_tensors
+    dev_tensors = get_medhop_distance_tensors(query_rel_seq=dev['relation_paths'],
+                                              query_ent_seq=dev['entity_paths'],
+                                              query_target_rel=dev['relation'],
+                                              query_label=dev['label'],
+                                              max_path_len=max_path_len,
+                                              target_rel_embeddings=target_embeddings,
+                                              document_store=dev_document_store)
+
+    (rel_seq, path_len, target_rel, partition, label) = train_tensors
 
     pos = len(np.argwhere(label == 1))
     neg = len(np.argwhere(label == 0))
-    # positive_prop = float(pos) / neg
-    positive_prop = 0.3
+    positive_prop = float(pos) / neg
 
     train_batch_generator = ProportionedPartitionBatchGenerator(partition, label, batch_size=batch_size, permute=True,
                                                                 positive_prop=positive_prop,
                                                                 tensor_dict={'rel_seq': rel_seq,
-                                                                             'ent_seq': ent_seq,
                                                                              'seq_len': path_len,
-                                                                             'rel_len': rel_len,
-                                                                             'ent_len': ent_len,
                                                                              'target_rel': target_rel})
     print('Positives per batch: {} \nNegatives per batch: {}'.format(train_batch_generator.positive_batch_size,
                                                                      train_batch_generator.negative_batch_size))
     train_eval_batch_generator = PartitionBatchGenerator(partition, label, batch_size=batch_size, permute=False,
                                                          tensor_dict={'rel_seq': rel_seq,
-                                                                      'ent_seq': ent_seq,
                                                                       'seq_len': path_len,
-                                                                      'rel_len': rel_len,
-                                                                      'ent_len': ent_len,
                                                                       'target_rel': target_rel})
-    (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = dev_tensors
+    (rel_seq, path_len, target_rel, partition, label) = dev_tensors
     dev_batch_generator = PartitionBatchGenerator(partition, label, batch_size=batch_size, permute=False,
                                                   tensor_dict={'rel_seq': rel_seq,
-                                                               'ent_seq': ent_seq,
                                                                'seq_len': path_len,
-                                                               'rel_len': rel_len,
-                                                               'ent_len': ent_len,
                                                                'target_rel': target_rel})
 
     model_params = {
         'max_path_len': max_path_len,
-        'max_rel_len': max_rel_len,
-        'max_ent_len': max_ent_len,
-        'relation_embedder': word2vec_embeddings,
-        'relation_embedder_params': {
-            'max_norm': None,
-            'with_projection': True,
-            'projection_activation': 'tanh',
-            'projection_dim': None,
-            'name': 'node_embedder',
-            'reuse': False
-        },
-        'relation_encoder_params': {
-            'module': 'average',
-            'name': 'relation_average_encoder',
-            'repr_dim': emb_dim,
-            'activation': None,
-            'dropout': None,
-            'extra_args': {
-                'with_backward': False,
-                'with_projection': False
-            }
-        },
-        'entity_embedder': word2vec_embeddings,
-        'entity_embedder_params': {
-            'max_norm': None,
-            'with_projection': True,
-            'projection_activation': 'tanh',
-            'projection_dim': None,
-            'name': 'node_embedder',
-            'reuse': True
-        },
-        'entity_encoder_params': {
-            'module': 'identity',
-            'name': 'entity_identity_encoder',
-            'activation': None,
-            'dropout': None
-        },
         'target_embedder': target_embeddings,
         'target_embedder_params': {
             'max_norm': None,
             'with_projection': True,
             'projection_activation': 'tanh',
             'projection_dim': None,
-            'name': 'target_relation_embedder',
             'reuse': False
         },
         'path_encoder_params': {
@@ -228,20 +146,20 @@ if __name__ == '__main__':
     }
 
     train_params = {
-        'optimizer': tf.train.AdamOptimizer(learning_rate=1e-3),
+        'optimizer': tf.train.AdamOptimizer(learning_rate=1e-2),
         'l2': l2,
         'clip_op': None,
         'clip': None
     }
 
-    model = TextualChainsOfReasoningModel(model_params, train_params)
+    model = DistanceChainsOfReasoningModel(model_params, train_params)
     print(model.params_str)
     print(pprint.pformat(model.train_variables))
 
     steps = train_batch_generator.batch_count * num_epochs
     check_period = 20
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
-                                                      per_process_gpu_memory_fraction=0.5))
+                                                      per_process_gpu_memory_fraction=0.3))
 
     medhop_acc = []
     max_dev_medhop_acc = 0.0
@@ -249,9 +167,9 @@ if __name__ == '__main__':
     start_time = time.strftime('%X_%d.%m.%y')
     run_id = 'run_{}_emb_dim={}_l2={}_drop={}_paths={}_balanced'.format(start_time, emb_dim, l2, dropout, method)
     print('Run id: {}'.format(run_id))
-    model_dir = './textual_chains_of_reasoning_models/baseline/{}'.format(run_id)
-    log_dir = './textual_chains_of_reasoning_logs/baseline/{}'.format(run_id)
-    acc_dir = './textual_chains_of_reasoning_logs/baseline/acc_{}.txt'.format(run_id)
+    model_dir = './textual_chains_of_reasoning_models/distance_baseline/{}'.format(run_id)
+    log_dir = './textual_chains_of_reasoning_logs/distance_baseline/{}'.format(run_id)
+    acc_dir = './textual_chains_of_reasoning_logs/distance_baseline/acc_{}.txt'.format(run_id)
 
     # make save dir
     os.makedirs(model_dir)
