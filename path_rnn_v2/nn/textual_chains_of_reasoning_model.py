@@ -1,4 +1,3 @@
-import os
 import pprint
 
 import tensorflow as tf
@@ -24,22 +23,23 @@ class TextualChainsOfReasoningModel(BaseModel):
         self._saver = tf.train.Saver()
 
     def _setup_model(self, model_params):
+        self.rel_only = model_params['rel_only'] if 'rel_only' in model_params else False
         self.max_path_len = model_params['max_path_len']
-        self.max_rel_len = model_params['max_rel_len']
-        self.max_ent_len = model_params['max_ent_len']
         self.label_smoothing = model_params['label_smoothing'] if 'label_smoothing' in model_params else None
 
+        self.max_rel_len = model_params['max_rel_len']
         self.rel_embedder = model_params['relation_embedder']
         self.rel_embedder_params = model_params['relation_embedder_params']
+        self.rel_encoder_params = model_params['relation_encoder_params']
 
-        self.ent_embedder = model_params['entity_embedder']
-        self.ent_embedder_params = model_params['entity_embedder_params']
+        if not self.rel_only:
+            self.max_ent_len = model_params['max_ent_len']
+            self.ent_embedder = model_params['entity_embedder']
+            self.ent_embedder_params = model_params['entity_embedder_params']
+            self.ent_encoder_params = model_params['entity_encoder_params']
 
         self.target_rel_embedder = model_params['target_embedder']
         self.target_rel_embedder_params = model_params['target_embedder_params']
-
-        self.rel_encoder_params = model_params['relation_encoder_params']
-        self.ent_encoder_params = model_params['entity_encoder_params']
 
         self.path_encoder_params = model_params['path_encoder_params']
         self.path_rnn_params = model_params['path_rnn_params']
@@ -51,10 +51,14 @@ class TextualChainsOfReasoningModel(BaseModel):
         rel_seq_enc = encode_path_elem(self.rel_seq, self.rel_len, self.rel_embedder, self.rel_embedder_params,
                                        self.rel_encoder_params, is_eval=self.is_eval,
                                        name='rel_seq_encoder')
-        # [batch_size, max_path_len, ent_repr_dim]
-        ent_seq_enc = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder, self.ent_embedder_params,
-                                       self.ent_encoder_params, is_eval=self.is_eval,
-                                       name='ent_seq_encoder')
+
+        if not self.rel_only:
+            # [batch_size, max_path_len, ent_repr_dim]
+            ent_seq_enc = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder, self.ent_embedder_params,
+                                           self.ent_encoder_params, is_eval=self.is_eval,
+                                           name='ent_seq_encoder')
+        else:
+            ent_seq_enc = None
 
         # [batch_size, target_rel_repr_dim]
         target_rel_enc = self.target_rel_embedder.embed_sequence(self.target_rel,
@@ -90,31 +94,43 @@ class TextualChainsOfReasoningModel(BaseModel):
     def _setup_evaluation(self):
         mean_loss, update_op_loss, reset_op_loss = create_reset_metric(tf.metrics.mean, 'mean_loss',
                                                                        values=self.tensors['loss'])
+
         self._tensors['mean_loss'] = mean_loss
         self._tensors['update_op_loss'] = update_op_loss
         self._tensors['reset_op_loss'] = reset_op_loss
 
+        acc, update_op_acc, reset_op_acc = create_reset_metric(tf.metrics.accuracy, 'mean_acc', labels=self.label,
+                                                               predictions=tf.round(self.tensors['prob']))
+
+        self._tensors['acc'] = acc
+        self._tensors['update_op_acc'] = update_op_acc
+        self._tensors['reset_op_acc'] = reset_op_acc
+
         tf.summary.scalar('train_loss', self.tensors['loss'], collections=['summary_train'])
         tf.summary.scalar('test_loss', mean_loss, collections=['summary_test'])
         tf.summary.scalar('train_eval_loss', mean_loss, collections=['summary_train_eval'])
+        tf.summary.scalar('test_acc', acc, collections=['summary_test'])
+        tf.summary.scalar('train_eval_acc', acc, collections=['summary_train_eval'])
 
     def _setup_placeholders(self):
-        # [batch_size, max_path_len, max_rel_len]
-        self.rel_seq = tf.placeholder(tf.int32,
-                                      shape=[None, self.max_path_len, self.max_rel_len])
-        # [batch_size, max_path_len, max_ent_len]
-        self.ent_seq = tf.placeholder(tf.int32,
-                                      shape=[None, self.max_path_len, self.max_ent_len])
-
         # [batch_size]
         self.seq_len = tf.placeholder(tf.int32,
                                       shape=[None])
+
+        # [batch_size, max_path_len, max_rel_len]
+        self.rel_seq = tf.placeholder(tf.int32,
+                                      shape=[None, self.max_path_len, self.max_rel_len])
         # [batch_size, max_path_len]
         self.rel_len = tf.placeholder(tf.int32,
                                       shape=[None, self.max_path_len])
-        # [batch_size, max_path_len]
-        self.ent_len = tf.placeholder(tf.int32,
-                                      shape=[None, self.max_path_len])
+
+        if not self.rel_only:
+            # [batch_size, max_path_len, max_ent_len]
+            self.ent_seq = tf.placeholder(tf.int32,
+                                          shape=[None, self.max_path_len, self.max_ent_len])
+            # [batch_size, max_path_len]
+            self.ent_len = tf.placeholder(tf.int32,
+                                          shape=[None, self.max_path_len])
 
         # [num_queries_in_batch]
         self.target_rel = tf.placeholder(tf.int32,
@@ -131,50 +147,62 @@ class TextualChainsOfReasoningModel(BaseModel):
                                       shape=())
 
         self._placeholders = {'rel_seq': self.rel_seq,
-                              'ent_seq': self.ent_seq,
                               'seq_len': self.seq_len,
                               'rel_len': self.rel_len,
-                              'ent_len': self.ent_len,
                               'target_rel': self.target_rel,
                               'partition': self.partition,
                               'label': self.label,
                               'is_eval': self.is_eval}
+        if not self.rel_only:
+            self._placeholders.update({
+                'ent_seq': self.ent_seq,
+                'ent_len': self.ent_len,
+            })
 
     @property
     def params_str(self):
         return ('===============Model parameters=============\n'
                 'Max path length: {}\n'
-                'Max relation length: {}\n'
-                'Max entity length: {}\n'
                 'Label smoothing: {}\n'
-                'Relation Embedder params:\n'
-                '{}\n'
-                '{}\n'
-                'Relation Encoder params:\n'
-                '{}\n'
-                'Entity Embedder params:\n'
-                '{}\n'
-                '{}\n'
-                'Entity Encoder params:\n'
-                '{}\n'
+                '{}\n',
+                '{}\n',
                 'Path RNN params:\n'
                 '{}\n'
                 '{}\n'
                 '===============Train parameters=============\n'
                 '{}\n'
                 '============================================\n'.format(self.max_path_len,
-                                                                        self.max_rel_len,
-                                                                        self.max_ent_len,
                                                                         self.label_smoothing,
-                                                                        self.rel_embedder.config_str,
-                                                                        pprint.pformat(self.rel_embedder_params),
-                                                                        pprint.pformat(self.rel_encoder_params),
-                                                                        self.ent_embedder.config_str,
-                                                                        pprint.pformat(self.ent_embedder_params),
-                                                                        pprint.pformat(self.ent_encoder_params),
+                                                                        self._rel_params_str(),
+                                                                        self._ent_params_str(),
                                                                         pprint.pformat(self.path_encoder_params),
                                                                         pprint.pformat(self.path_rnn_params),
                                                                         pprint.pformat(self.train_params)))
+
+    def _rel_params_str(self):
+        return ('Max relation length: {}\n'
+                'Relation Embedder params:\n'
+                '{}\n'
+                '{}\n'
+                'Relation Encoder params:\n'
+                '{}\n').format(self.max_rel_len,
+                               self.rel_embedder.config_str,
+                               pprint.pformat(self.rel_embedder_params),
+                               pprint.pformat(self.rel_encoder_params))
+
+    def _ent_params_str(self):
+        if not self.rel_only:
+            return ('Max entity length: {}\n'
+                    'Entity Embedder params:\n'
+                    '{}\n'
+                    '{}\n'
+                    'Entity Encoder params:\n'
+                    '{}\n').format(self.max_rel_len,
+                                   self.rel_embedder.config_str,
+                                   pprint.pformat(self.rel_embedder_params),
+                                   pprint.pformat(self.rel_encoder_params))
+        else:
+            return 'Relation only: True\n'
 
     def train_step(self, batch, sess, summ_writer=None):
         batch['is_eval'] = False
@@ -193,17 +221,19 @@ class TextualChainsOfReasoningModel(BaseModel):
     def eval_step(self, batch, sess, reset=False, summ_writer=None, summ_collection=None):
         if batch is not None:
             batch['is_eval'] = True
-            sess.run([self.tensors['update_op_loss']],
+            sess.run([self.tensors['update_op_loss'],
+                      self.tensors['update_op_acc']],
                      feed_dict=self.convert_to_feed_dict(batch))
 
         if summ_writer is not None and summ_collection is not None and summ_collection in self.tensors:
-            summ, loss = sess.run([self.tensors[summ_collection], self.tensors['mean_loss']])
+            summ, loss, acc = sess.run(
+                [self.tensors[summ_collection], self.tensors['mean_loss'], self.tensors['acc']])
             summ_writer.add_summary(summ, tf.train.global_step(sess, self.tensors['global_step']))
         else:
-            loss = sess.run(self.tensors['mean_loss'])
+            loss, acc = sess.run([self.tensors['mean_loss'], self.tensors['acc']])
 
         if reset:
-            sess.run(self.tensors['reset_op_loss'])
+            sess.run([self.tensors['reset_op_loss'], self.tensors['reset_op_acc']])
         return loss
 
     def predict_step(self, batch, sess):
