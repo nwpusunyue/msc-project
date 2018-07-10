@@ -10,7 +10,6 @@ from tqdm import tqdm
 from parsing.document_store import DocumentStore
 from parsing.special_tokens import *
 
-
 biomed_entity = re.compile("[ABCDEFGHIKMOPQS][0-9,A-Z]+[0-9]+")
 
 
@@ -34,7 +33,8 @@ def extract_entities(text, biomed_entities=None, word_tokenizer=WordPunctTokeniz
 
     tokenized_text = word_tokenizer.tokenize(text)
     for i, t in enumerate(tokenized_text):
-        if (biomed_entities is None and t in biomed_entities) or biomed_entity.match(t):
+        if (biomed_entities is not None and t in biomed_entities) or (
+                biomed_entities is None and biomed_entity.match(t)):
             entity_idxs.append(i)
             if t not in unique_entities:
                 unique_entities[t] = [i]

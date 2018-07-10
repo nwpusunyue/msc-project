@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-for lim in 1 10 100
+for lim in 100
 do
   for tok in punkt treebank
   do
-    for type in test #train dev train_mini
+    for type in test train dev train_mini
     do
         for method in shortest
         do

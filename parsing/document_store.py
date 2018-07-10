@@ -1,4 +1,5 @@
 from functools import reduce
+from itertools import product
 
 
 class DocumentStore:
@@ -64,6 +65,7 @@ class DocumentStore:
 
         return ent_neighb
 
-
-
-
+    def get_min_distance(self, idx, source, target):
+        pos_source = self.document_entities[idx][source]
+        pos_target = self.document_entities[idx][target]
+        return min([abs(p[0] - p[1]) for p in product(pos_source, pos_target)])
