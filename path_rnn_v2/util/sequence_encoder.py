@@ -67,7 +67,8 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
 
 
 # RNN Encoders
-def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False, with_backward=True):
+def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False, projection_activation=None,
+            with_backward=True):
     output = rnn.fused_birnn(fused_rnn, sequence, seq_length, with_backward=with_backward,
                              dtype=tf.float32, scope='rnn')[0]
     if with_backward:
@@ -77,17 +78,21 @@ def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False, with_b
         output = extract_axis_1(output, seq_length - 1)
     if with_projection:
         projection_initializer = tf.constant_initializer(np.concatenate([np.eye(size), np.eye(size)]))
-        output = tf.layers.dense(output, size, kernel_initializer=projection_initializer, name='projection')
+        projection_activation = activation_from_string(
+            projection_activation) if projection_activation is not None else projection_activation
+        output = tf.layers.dense(output, size, kernel_initializer=projection_initializer, name='projection',
+                                 activation=projection_activation)
     return output
 
 
-def bi_lstm(size, sequence, seq_length, with_projection=False, with_backward=True):
-    return _bi_rnn(size, tf.contrib.rnn.LSTMBlockFusedCell(size), sequence, seq_length, with_projection, with_backward)
+def bi_lstm(size, sequence, seq_length, with_projection=False, projection_activation=None, with_backward=True):
+    return _bi_rnn(size, tf.contrib.rnn.LSTMBlockFusedCell(size), sequence, seq_length, with_projection,
+                   projection_activation, with_backward)
 
 
-def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False, with_backward=True):
+def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False, projection_activation=None, with_backward=True):
     fused_rnn = tf.contrib.rnn.FusedRNNCellAdaptor(rnn_cell, use_dynamic_rnn=True)
-    return _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection, with_backward)
+    return _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection, projection_activation, with_backward)
 
 
 if __name__ == '__main__':
