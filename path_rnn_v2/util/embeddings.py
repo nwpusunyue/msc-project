@@ -66,6 +66,7 @@ class Embeddings(ABC):
         '''
 
         :param seq: [batch_size, ..., max_seq_length] tensor
+        If seq is None, then embedding matrix is returned instead, with a potential projection
         :param embd: An instantiation of the Embeddings abstract class
         :param name: name of the scope
         :param max_norm: if not None, the embeddings are l2-normalised to max norm
@@ -79,9 +80,13 @@ class Embeddings(ABC):
         '''
         with tf.variable_scope(name, reuse=reuse):
             embd_matrix = self.get_embedding_matrix_tensor()
-            embd_seq = tf.nn.embedding_lookup(embd_matrix,
-                                              seq,
-                                              max_norm=max_norm)
+
+            if seq is not None:
+                embd_seq = tf.nn.embedding_lookup(embd_matrix,
+                                                  seq,
+                                                  max_norm=max_norm)
+            else:
+                embd_seq = embd_matrix
             if with_projection:
                 if projection_dim is None:
                     projection_dim = embd_matrix.get_shape()[1]

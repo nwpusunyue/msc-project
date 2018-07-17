@@ -100,13 +100,15 @@ def _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection=False, projec
 
 def bi_lstm(size, sequence, seq_length, with_projection=False, projection_activation=None, with_backward=True,
             last_output=True):
-    return _bi_rnn(size, tf.contrib.rnn.LSTMBlockFusedCell(size), sequence, seq_length, with_projection,
+    return _bi_rnn(size, (tf.contrib.rnn.LSTMBlockFusedCell(size), tf.contrib.rnn.LSTMBlockFusedCell(size)), sequence,
+                   seq_length, with_projection,
                    projection_activation, with_backward, last_output)
 
 
 def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False, projection_activation=None, with_backward=True,
            last_output=True):
-    fused_rnn = tf.contrib.rnn.FusedRNNCellAdaptor(rnn_cell, use_dynamic_rnn=True)
+    fused_rnn = (tf.contrib.rnn.FusedRNNCellAdaptor(rnn_cell, use_dynamic_rnn=True),
+                 tf.contrib.rnn.FusedRNNCellAdaptor(rnn_cell, use_dynamic_rnn=True))
     return _bi_rnn(size, fused_rnn, sequence, seq_length, with_projection, projection_activation, with_backward,
                    last_output)
 
