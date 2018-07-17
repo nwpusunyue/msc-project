@@ -19,8 +19,9 @@ parser.add_argument('train_path',
                     type=str,
                     help='Train dataset path')
 
-parser.add_argument('dev_path',
+parser.add_argument('--dev_path',
                     type=str,
+                    default=None,
                     help='Dev dataset path')
 
 parser.add_argument('output_path',
@@ -49,10 +50,11 @@ def generate_word2vec(documents, tokenizer_name, epochs, min_count, save_path):
     print('{} total sentences'.format(len(sentences)))
 
     tokenized_sentences = [tokenizer[tokenizer_name].tokenize(s) for s in sentences]
+    print()
     model = Word2Vec(min_count=min_count)
     model.build_vocab(tokenized_sentences)
     print('{} vocab size'.format(len(model.wv.vocab)))
-    model.train(sentences, total_examples=model.corpus_count, epochs=epochs)
+    model.train(tokenized_sentences, total_examples=model.corpus_count, epochs=epochs)
     model.save(save_path)
 
 
@@ -72,6 +74,10 @@ print('Train path: {}\n'
                                args.min_count))
 
 train_df = pd.read_json(args.train_path, orient='records')
-dev_df = pd.read_json(args.dev_path, orient='records')
-supports = set(chain.from_iterable(list(dev_df['supports']) + list(train_df['supports'])))
+if args.dev_path is not None:
+    dev_df = pd.read_json(args.dev_path, orient='records')
+    supports = set(chain.from_iterable(list(dev_df['supports']) + list(train_df['supports'])))
+else:
+    supports = set(chain.from_iterable(list(train_df['supports'])))
+
 generate_word2vec(supports, args.tokenizer, args.epochs, args.min_count, args.output_path)
