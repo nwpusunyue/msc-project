@@ -16,10 +16,8 @@ def medhop_accuracy(dataset, probs):
 
 
 def train_model(model, train, train_batch_generator, train_eval_batch_generator, dev, dev_batch_generator,
-                num_epochs, run_id_params, model_name, check_period=20):
+                num_epochs, run_id_params, model_name, check_period=20, config=None):
     steps = train_batch_generator.batch_count * num_epochs
-    config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
-                                                      per_process_gpu_memory_fraction=0.5))
 
     medhop_acc = []
     max_dev_medhop_acc = 0.0
