@@ -7,18 +7,25 @@ def medhop_accuracy(dataset, probs):
     grouped = dataset.groupby(['id']).agg({'label': list, 'prob': list})
     grouped['correct'] = grouped.apply(lambda row: int(np.argmax(row['label']) == np.argmax(row['prob'])), axis=1)
     accuracy = grouped['correct'].sum() / len(grouped)
+    grouped.to_json('lets_see_wtf_happens_here.json')
     return accuracy
 
 
 def evaluate_model(model, model_path, train, train_eval_batch_generator, dev, dev_batch_generator, test,
-                   test_batch_generator):
+                   test_batch_generator, word_embd=None, eval_file_path=None):
+
     print('Evaluating model: {}'.format(model_path))
+
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                       per_process_gpu_memory_fraction=0.5))
 
     with tf.Session(config=config) as sess:
         sess.run(tf.local_variables_initializer())
         model.load(sess, path=model_path)
+
+        if word_embd is not None:
+            word_embd_vals = sess.run(word_embd)
+            np.save('projected_word2vec', word_embd_vals)
 
         train_eval_prob = np.array([])
 
@@ -27,10 +34,10 @@ def evaluate_model(model, model_path, train, train_eval_batch_generator, dev, de
             model.eval_step(batch, sess)
             train_eval_prob = np.concatenate((train_eval_prob, model.predict_step(batch, sess)))
 
-        metrics = model.eval_step(batch=None, sess=sess, reset=True)
+        train_eval_metrics = model.eval_step(batch=None, sess=sess, reset=True)
         train_eval_medhop_acc = medhop_accuracy(train, train_eval_prob)
 
-        print('Train loss: {} Train medhop acc: {}'.format(metrics, train_eval_medhop_acc))
+        print('Train loss: {} Train medhop acc: {}'.format(train_eval_metrics, train_eval_medhop_acc))
 
         dev_prob = np.array([])
 
@@ -39,11 +46,11 @@ def evaluate_model(model, model_path, train, train_eval_batch_generator, dev, de
             model.eval_step(batch, sess)
             dev_prob = np.concatenate((dev_prob, model.predict_step(batch, sess)))
 
-        metrics = model.eval_step(batch=None, sess=sess, reset=True)
+        dev_metrics = model.eval_step(batch=None, sess=sess, reset=True)
 
         dev_medhop_acc = medhop_accuracy(dev, dev_prob)
 
-        print('Dev loss: {} Dev medhop acc: {}'.format(metrics, dev_medhop_acc))
+        print('Dev loss: {} Dev medhop acc: {}'.format(dev_metrics, dev_medhop_acc))
 
         test_prob = np.array([])
 
@@ -52,8 +59,15 @@ def evaluate_model(model, model_path, train, train_eval_batch_generator, dev, de
             model.eval_step(batch, sess)
             test_prob = np.concatenate((test_prob, model.predict_step(batch, sess)))
 
-        metrics = model.eval_step(batch=None, sess=sess, reset=True)
+        test_metrics = model.eval_step(batch=None, sess=sess, reset=True)
 
         test_medhop_acc = medhop_accuracy(test, test_prob)
 
-        print('Test loss: {} Test medhop acc: {}'.format(metrics, test_medhop_acc))
+        print('Test loss: {} Test medhop acc: {}'.format(test_metrics, test_medhop_acc))
+
+        if eval_file_path is not None:
+            file = open(eval_file_path, 'a')
+            file.write('Evaluating model: {}\n'.format(model_path))
+            file.write('Train loss: {} Train medhop acc: {}\n'.format(train_eval_metrics, train_eval_medhop_acc))
+            file.write('Dev loss: {} Dev medhop acc: {}\n'.format(dev_metrics, dev_medhop_acc))
+            file.write('Test loss: {} Test medhop acc: {}\n\n'.format(test_metrics, test_medhop_acc))
