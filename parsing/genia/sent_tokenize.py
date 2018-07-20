@@ -6,18 +6,21 @@ GENIA_SS_PATH = '~/bionlp_st_2013_supporting/src/geniass_ss.sh'
 
 
 def genia_sent_tokenize(text):
-    output = subprocess.check_output('source ~/.bash_profile;echo {} | {}'.format(quote(text), GENIA_SS_PATH),
-                                     executable="/bin/bash",
-                                     shell=True)
-    output = output.decode('utf-8')
+    output = subprocess.check_output(
+        'source ~/.bash_profile;echo {} | {}'.format(quote(text), GENIA_SS_PATH).encode('utf-8'),
+        executable="/bin/bash",
+        shell=True)
+    output = output.decode('utf-8').strip()
+    if output[:2] == "b'" or output[:2] == 'b"':
+        output = output[2:-1]
     output = output.splitlines()
     return output
 
 
 if __name__ == '__main__':
     print(genia_sent_tokenize(
-        "Induction of apoptosis of Beta cells of the pancreas by advanced glycation end-products , important mediators "
-        "of chronic complications of diabetes mellitus . We herein report cytotoxicity of advanced glycation "
+        "Induction of β apoptosis of Beta cells of the pancreas by advanced glycation end-products , important "
+        "mediators of chronic complications of diabetes mellitus . We herein report cytotoxicity of advanced glycation "
         "end-products ( AGEs ) on pancreatic beta cells . AGEs stimulated reactive oxygen species ( ROS ) generation "
         "but did not arrest proliferation of the P01308 -1 cell line . Pancreatic beta cell lines or primary cultured "
         "islets possess a receptor for P51606 ( RAGE ) , and its expression increased after P51606 treatment . "
