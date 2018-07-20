@@ -4,16 +4,24 @@ import pickle
 
 import numpy as np
 import pandas as pd
-from nltk.tokenize import TreebankWordTokenizer, WordPunctTokenizer
 
+from parsing.genia.word_tokenize import GTBTokenizer
+from nltk.tokenize import TreebankWordTokenizer, WordPunctTokenizer
 from parsing.medhop_graph_extraction import preprocess_medhop
 from parsing.medhop_path_extraction import extract_paths_dataset
+from parsing.sent_tokenize import NLTKSentTokenizer, GeniaSentTokenizer
 
 np.random.seed(0)
 
 tokenizer = {
     'punkt': WordPunctTokenizer(),
-    'treebank': TreebankWordTokenizer()
+    'treebank': TreebankWordTokenizer(),
+    'genia': GTBTokenizer()
+}
+
+sent_tokenizer = {
+    'nltk': NLTKSentTokenizer(),
+    'genia': GeniaSentTokenizer()
 }
 
 # Instantiate the parser
@@ -29,7 +37,6 @@ parser.add_argument('output_path',
 parser.add_argument('document_store_path',
                     type=str,
                     help='Document store path')
-
 parser.add_argument('--sentence_wise',
                     action='store_true',
                     help='If this is set, the paths will be between entities in the same sentence.')
@@ -52,8 +59,13 @@ parser.add_argument('--limit',
 parser.add_argument('--tokenizer',
                     type=str,
                     default='punkt',
-                    help='One of punkt or treebank')
+                    help='One of punkt or treebank or genia')
+parser.add_argument('--sent_tokenizer',
+                    type=str,
+                    default='nltk',
+                    help='One of nltk, genia')
 
+print('Start')
 args = parser.parse_args()
 print('Input path:{}\n'
       'Output path:{}\n'
@@ -63,7 +75,8 @@ print('Input path:{}\n'
       'Path search method:{}\n'
       'Cutoff:{}\n'
       'Limit:{}\n'
-      'Tokenizer:{}\n'.format(args.input_path,
+      'Tokenizer:{}\n'
+      'Sent tokenizer: {}\n'.format(args.input_path,
                               args.output_path,
                               args.document_store_path,
                               args.entities_path,
@@ -71,13 +84,15 @@ print('Input path:{}\n'
                               args.path_search_method,
                               args.cutoff,
                               args.limit,
-                              args.tokenizer))
+                              args.tokenizer,
+                              args.sent_tokenizer), flush=True)
 
 df = pd.read_json(args.input_path, orient='records')
 df, document_store = preprocess_medhop(df,
                                        sentence_wise=args.sentence_wise,
                                        entity_list_path=args.entities_path,
-                                       word_tokenizer=tokenizer[args.tokenizer]
+                                       word_tokenizer=tokenizer[args.tokenizer],
+                                       sent_tokenizer=sent_tokenizer[args.sent_tokenizer]
                                        )
 paths_dataset = extract_paths_dataset(df,
                                       path_search_method_name=args.path_search_method,
