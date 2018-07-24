@@ -131,8 +131,8 @@ class Word2VecEmbeddings(Embeddings):
                 'Is Trainable: {}\n'
                 'Unknown token: {}\n'
                 'Special tokens: {}\n'
-                '========================='.format(self.name, self.embedding_matrix.shape[0],
-                                                   self.embedding_matrix.shape[1],
+                '========================='.format(self.name, self.embedding_matrix.shape[1],
+                                                   self.embedding_matrix.shape[0],
                                                    self.trainable, self.unk_token, self.special_tokens))
 
 

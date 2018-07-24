@@ -164,8 +164,8 @@ class TextualChainsOfReasoningModel(BaseModel):
         return ('===============Model parameters=============\n'
                 'Max path length: {}\n'
                 'Label smoothing: {}\n'
-                '{}\n',
-                '{}\n',
+                '{}\n'
+                '{}\n'
                 'Path RNN params:\n'
                 '{}\n'
                 '{}\n'
@@ -199,8 +199,8 @@ class TextualChainsOfReasoningModel(BaseModel):
                     'Entity Encoder params:\n'
                     '{}\n').format(self.max_rel_len,
                                    self.rel_embedder.config_str,
-                                   pprint.pformat(self.rel_embedder_params),
-                                   pprint.pformat(self.rel_encoder_params))
+                                   pprint.pformat(self.ent_embedder_params),
+                                   pprint.pformat(self.ent_encoder_params))
         else:
             return 'Relation only: True\n'
 
