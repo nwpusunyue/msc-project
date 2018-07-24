@@ -16,9 +16,6 @@ from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
 from path_rnn_v2.util.tensor_generator import get_medhop_tensors
 
 np.random.seed(0)
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-pd.set_option('display.max_colwidth', -1)
 
 # Instantiate the parser
 parser = argparse.ArgumentParser()
@@ -38,6 +35,10 @@ parser.add_argument('--paths_selection',
                     type=str,
                     default='shortest',
                     help='How the paths in the dataset were generated')
+parser.add_argument('--limit',
+                    type=int,
+                    default=100,
+                    help='Max number of paths per example')
 parser.add_argument('--testing',
                     action='store_true',
                     help='If this is set, testing is run instead of training')
@@ -67,6 +68,7 @@ if __name__ == '__main__':
     model_path = args.model_path
     eval_file_path = args.eval_file_path
     word_embd_path = args.word_embd_path
+    limit = args.limit
 
     if not no_gpu_conf:
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -76,15 +78,13 @@ if __name__ == '__main__':
     else:
         config = None
 
-    limit = 100
-
     max_path_len = 5
     batch_size = 20
     num_epochs = 25
 
     path = './data'
     model_name = 'baseline_truncated_relation'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_balanced'.format(emb_dim, l2, dropout, method)
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_limit={}_balanced'.format(emb_dim, l2, dropout, method, limit)
 
     train = pd.read_json(
         '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_train.json'.format(path, limit, method))

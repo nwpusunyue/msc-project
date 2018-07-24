@@ -85,7 +85,7 @@ if __name__ == '__main__':
     num_epochs = 25
 
     path = './data'
-    model_name = 'lstm_truncated_relation'
+    model_name = 'lstm_sentence_relation'
     run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_balanced'.format(emb_dim, l2, dropout, method,
                                                                                      tokenizer)
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
         test_document_store = pickle.load(open('{}/test_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     max_ent_len = 1
-    max_rel_len = 520
+    max_rel_len = 510
 
     word2vec_embeddings = Word2VecEmbeddings(word_embd_path,
                                              name='token_embd',
@@ -124,6 +124,13 @@ if __name__ == '__main__':
                                          initializer=tf.truncated_normal_initializer(mean=0.0,
                                                                                      stddev=1.0,
                                                                                      dtype=tf.float64))
+    rel_retrieve_params = {
+        'replacement': (ENT_1, ENT_2),
+        'sentence_truncate': True
+    }
+    ent_retrieve_params = {
+        'neighb_size': 0
+    }
 
     train_tensors = get_medhop_tensors(train['relation_paths'],
                                        train['entity_paths'],
@@ -136,10 +143,7 @@ if __name__ == '__main__':
                                        max_path_len=max_path_len,
                                        max_rel_len=max_rel_len,
                                        max_ent_len=max_ent_len,
-                                       rel_retrieve_params={
-                                           'replacement': (ENT_1, ENT_2),
-                                           'truncate': True
-                                       })
+                                       rel_retrieve_params=rel_retrieve_params)
     dev_tensors = get_medhop_tensors(dev['relation_paths'],
                                      dev['entity_paths'],
                                      dev['relation'],
@@ -151,10 +155,7 @@ if __name__ == '__main__':
                                      max_path_len=max_path_len,
                                      max_rel_len=max_rel_len,
                                      max_ent_len=max_ent_len,
-                                     rel_retrieve_params={
-                                         'replacement': (ENT_1, ENT_2),
-                                         'truncate': True
-                                     })
+                                     rel_retrieve_params=rel_retrieve_params)
     if testing:
         test_tensors = get_medhop_tensors(test['relation_paths'],
                                           test['entity_paths'],
@@ -167,10 +168,7 @@ if __name__ == '__main__':
                                           max_path_len=max_path_len,
                                           max_rel_len=max_rel_len,
                                           max_ent_len=max_ent_len,
-                                          rel_retrieve_params={
-                                              'replacement': (ENT_1, ENT_2),
-                                              'truncate': True
-                                          })
+                                          rel_retrieve_params=rel_retrieve_params)
 
     (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = train_tensors
 

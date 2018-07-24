@@ -39,18 +39,22 @@ parser.add_argument('--tokenizer',
                     type=str,
                     default='punkt',
                     help='Tokenizer used for the dataset')
+parser.add_argument('--limit',
+                    type=int,
+                    default=100,
+                    help='Max number of paths per example')
 parser.add_argument('--testing',
                     action='store_true',
                     help='If this is set, testing is run instead of training')
-parser.add_argument('--no_gpu_conf',
-                    action='store_true',
-                    help='If this is set, no gpu options will be passed in')
 parser.add_argument('--model_path',
                     default=None,
                     help='Model path if testing')
 parser.add_argument('--eval_file_path',
                     default=None,
                     help='File to append evaluation results to')
+parser.add_argument('--no_gpu_conf',
+                    action='store_true',
+                    help='If this is set, no gpu options will be passed in')
 parser.add_argument('--word_embd_path',
                     type=str,
                     default='./medhop_word2vec_punkt_v2',
@@ -69,25 +73,24 @@ if __name__ == '__main__':
     model_path = args.model_path
     eval_file_path = args.eval_file_path
     word_embd_path = args.word_embd_path
+    limit = args.limit
 
     if not no_gpu_conf:
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "1"
         config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                           per_process_gpu_memory_fraction=0.5))
     else:
         config = None
-
-    limit = 100
 
     max_path_len = 5
     batch_size = 20
     num_epochs = 25
 
     path = './data'
-    model_name = 'lstm_truncated_relation'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_balanced'.format(emb_dim, l2, dropout, method,
-                                                                                     tokenizer)
+    model_name = 'baseline_sentence_relation'
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_limit={}_tokenizer={}_balanced'.format(emb_dim, l2, dropout,
+                                                                                              method, limit, tokenizer)
 
     train = pd.read_json(
         '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_train.json'.format(path, limit, method,
@@ -125,6 +128,14 @@ if __name__ == '__main__':
                                                                                      stddev=1.0,
                                                                                      dtype=tf.float64))
 
+    rel_retrieve_params = {
+        'replacement': (ENT_1, ENT_2),
+        'sentence_truncate': True
+    }
+    ent_retrieve_params = {
+        'neighb_size': 0
+    }
+
     train_tensors = get_medhop_tensors(train['relation_paths'],
                                        train['entity_paths'],
                                        train['relation'],
@@ -136,10 +147,8 @@ if __name__ == '__main__':
                                        max_path_len=max_path_len,
                                        max_rel_len=max_rel_len,
                                        max_ent_len=max_ent_len,
-                                       rel_retrieve_params={
-                                           'replacement': (ENT_1, ENT_2),
-                                           'truncate': True
-                                       })
+                                       rel_retrieve_params=rel_retrieve_params,
+                                       ent_retrieve_params=ent_retrieve_params)
     dev_tensors = get_medhop_tensors(dev['relation_paths'],
                                      dev['entity_paths'],
                                      dev['relation'],
@@ -151,10 +160,8 @@ if __name__ == '__main__':
                                      max_path_len=max_path_len,
                                      max_rel_len=max_rel_len,
                                      max_ent_len=max_ent_len,
-                                     rel_retrieve_params={
-                                         'replacement': (ENT_1, ENT_2),
-                                         'truncate': True
-                                     })
+                                     rel_retrieve_params=rel_retrieve_params,
+                                     ent_retrieve_params=ent_retrieve_params)
     if testing:
         test_tensors = get_medhop_tensors(test['relation_paths'],
                                           test['entity_paths'],
@@ -167,10 +174,8 @@ if __name__ == '__main__':
                                           max_path_len=max_path_len,
                                           max_rel_len=max_rel_len,
                                           max_ent_len=max_ent_len,
-                                          rel_retrieve_params={
-                                              'replacement': (ENT_1, ENT_2),
-                                              'truncate': True
-                                          })
+                                          rel_retrieve_params=rel_retrieve_params,
+                                          ent_retrieve_params=ent_retrieve_params)
 
     (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = train_tensors
 
@@ -220,13 +225,13 @@ if __name__ == '__main__':
             'reuse': False
         },
         'relation_encoder_params': {
-            'module': 'lstm',
-            'name': 'relation_lstm_encoder',
+            'module': 'average',
+            'name': 'relation_average_encoder',
             'repr_dim': emb_dim,
             'activation': None,
             'dropout': None,
             'extra_args': {
-                'with_backward': True,
+                'with_backward': False,
                 'with_projection': False
             }
         },
@@ -272,7 +277,7 @@ if __name__ == '__main__':
                     train_eval_batch_generator=train_eval_batch_generator,
                     dev=dev, dev_batch_generator=dev_batch_generator, model_name=model_name,
                     run_id_params=run_id_params,
-                    num_epochs=num_epochs, check_period=50, config=config)
+                    num_epochs=num_epochs, config=config)
     else:
         word_embd = word2vec_embeddings.embed_sequence(seq=None, name='node_embedder', max_norm=None,
                                                        with_projection=True,
@@ -280,4 +285,4 @@ if __name__ == '__main__':
                                                        projection_dim=None, reuse=True)
         evaluate_model(model, model_path=model_path, train=train, train_eval_batch_generator=train_eval_batch_generator,
                        dev=dev, dev_batch_generator=dev_batch_generator, test=test,
-                       test_batch_generator=test_batch_generator, word_embd=word_embd, eval_file_path=eval_file_path)
+                       test_batch_generator=test_batch_generator, eval_file_path=eval_file_path, word_embd=word_embd)

@@ -35,6 +35,10 @@ parser.add_argument('--paths_selection',
                     type=str,
                     default='shortest',
                     help='How the paths in the dataset were generated')
+parser.add_argument('--tokenizer',
+                    type=str,
+                    default='punkt',
+                    help='Tokenizer used for the dataset')
 parser.add_argument('--testing',
                     action='store_true',
                     help='If this is set, testing is run instead of training')
@@ -64,6 +68,7 @@ if __name__ == '__main__':
     model_path = args.model_path
     eval_file_path = args.eval_file_path
     word_embd_path = args.word_embd_path
+    tokenizer = args.tokenizer
 
     if not no_gpu_conf:
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -81,23 +86,26 @@ if __name__ == '__main__':
 
     path = './data'
     model_name = 'attention_truncated_relation'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_balanced'.format(emb_dim, l2, dropout, method)
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_balanced'.format(emb_dim, l2,
+                                                                                     dropout, method, tokenizer)
 
     train = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_train.json'.format(path, limit, method))
-    train_document_store = pickle.load(open('{}/train_doc_store_punkt.pickle'.format(path), 'rb'))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_train.json'.format(path, limit, method,
+                                                                                          tokenizer))
+    train_document_store = pickle.load(open('{}/train_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     dev = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_dev.json'.format(path, limit, method))
-    dev_document_store = pickle.load(open('{}/dev_doc_store_punkt.pickle'.format(path), 'rb'))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_dev.json'.format(path, limit, method, tokenizer))
+    dev_document_store = pickle.load(open('{}/dev_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     if testing:
         test = pd.read_json(
-            '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_test.json'.format(path, limit, method))
-        test_document_store = pickle.load(open('{}/test_doc_store_punkt.pickle'.format(path), 'rb'))
+            '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_test.json'.format(path, limit, method,
+                                                                                             tokenizer))
+        test_document_store = pickle.load(open('{}/test_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     max_ent_len = 1
-    max_rel_len = 520
+    max_rel_len = max(train_document_store.max_tokens, dev_document_store.max_tokens)
 
     word2vec_embeddings = Word2VecEmbeddings(word_embd_path,
                                              name='token_embd',
