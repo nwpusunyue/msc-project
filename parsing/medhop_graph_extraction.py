@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from itertools import chain, combinations
-from nltk.tokenize import WordPunctTokenizer
+from nltk.tokenize import WordPunctTokenizer, sent_tokenize
 from parsing.document_store import DocumentStore
 from parsing.sent_tokenize import NLTKSentTokenizer
 from parsing.special_tokens import *
@@ -54,7 +54,32 @@ def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True,
                                          [extract_entities(s, biomed_entities, word_tokenizer) for s in
                                           sent_tokenizer.sent_tokenize(document)]))
     else:
-        document_instances = [extract_entities(document, biomed_entities, word_tokenizer)]
+        doc_sent_instances = []
+        sent_offset = 0
+        for sent in sent_tokenizer.sent_tokenize(document):
+            (tokenized_sent, unique_entities) = extract_entities(sent, biomed_entities, word_tokenizer)
+            doc_sent_instances.append((tokenized_sent, unique_entities, sent_offset))
+            sent_offset += len(tokenized_sent)
+
+        tokenized_doc = []
+        doc_unique_entities = {}
+        doc_unique_sent_entities = {}
+        for i, sent_instance in enumerate(doc_sent_instances):
+            (tokenized_sent, unique_entities, sent_offset) = sent_instance
+            tokenized_doc += tokenized_sent
+            for ent, pos in unique_entities:
+                if ent not in doc_unique_sent_entities:
+                    doc_unique_sent_entities[ent] = []
+                if ent not in doc_unique_entities:
+                    doc_unique_entities[ent] = []
+
+                doc_unique_sent_entities[ent].append(i)
+                for p in pos:
+                    doc_unique_entities[ent].append(p + sent_offset)
+        document_instances = [
+            (tokenized_doc, sorted([(k, v) for k, v in doc_unique_entities.items()], key=lambda x: x[0][1]),
+             doc_unique_sent_entities, doc_sent_instances)]
+
     return document_instances
 
 
