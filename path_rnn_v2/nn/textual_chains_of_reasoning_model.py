@@ -31,12 +31,16 @@ class TextualChainsOfReasoningModel(BaseModel):
         self.rel_embedder = model_params['relation_embedder']
         self.rel_embedder_params = model_params['relation_embedder_params']
         self.rel_encoder_params = model_params['relation_encoder_params']
+        self.rel_encoder_name = 'rel_seq_encoder' if 'rel_encoder_name' not in model_params else model_params[
+            'rel_encoder_name']
 
         if not self.rel_only:
             self.max_ent_len = model_params['max_ent_len']
             self.ent_embedder = model_params['entity_embedder']
             self.ent_embedder_params = model_params['entity_embedder_params']
             self.ent_encoder_params = model_params['entity_encoder_params']
+            self.ent_encoder_name = 'ent_seq_encoder' if 'ent_encoder_name' not in model_params else model_params[
+                'ent_encoder_name']
 
         self.target_rel_embedder = model_params['target_embedder']
         self.target_rel_embedder_params = model_params['target_embedder_params']
@@ -50,13 +54,13 @@ class TextualChainsOfReasoningModel(BaseModel):
         # [batch_size, max_path_len, rel_repr_dim]
         rel_seq_enc = encode_path_elem(self.rel_seq, self.rel_len, self.rel_embedder, self.rel_embedder_params,
                                        self.rel_encoder_params, is_eval=self.is_eval,
-                                       name='rel_seq_encoder')
+                                       name=self.rel_encoder_name)
 
         if not self.rel_only:
             # [batch_size, max_path_len, ent_repr_dim]
             ent_seq_enc = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder, self.ent_embedder_params,
                                            self.ent_encoder_params, is_eval=self.is_eval,
-                                           name='ent_seq_encoder')
+                                           name=self.ent_encoder_name)
         else:
             ent_seq_enc = None
 
@@ -237,6 +241,7 @@ class TextualChainsOfReasoningModel(BaseModel):
         return loss
 
     def predict_step(self, batch, sess):
+        batch['is_eval'] = True
         return sess.run(self.tensors['prob'],
                         feed_dict=self.convert_to_feed_dict(batch))
 
