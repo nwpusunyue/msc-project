@@ -10,6 +10,7 @@ import tensorflow as tf
 from parsing.special_tokens import *
 from path_rnn_v2.experiments.training import train_model
 from path_rnn_v2.experiments.eval.evaluation import evaluate_model
+from path_rnn_v2.experiments.prediction.prediction import generate_prediction
 from path_rnn_v2.nn.textual_chains_of_reasoning_model import TextualChainsOfReasoningModel
 from path_rnn_v2.util.batch_generator import PartitionBatchGenerator, ProportionedPartitionBatchGenerator
 from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
@@ -41,6 +42,9 @@ parser.add_argument('--tokenizer',
 parser.add_argument('--testing',
                     action='store_true',
                     help='If this is set, testing is run instead of training')
+parser.add_argument('--predicting',
+                    action='store_true',
+                    help='If this is set, predicting is run instead of training')
 parser.add_argument('--model_path',
                     default=None,
                     help='Model path if testing')
@@ -65,13 +69,14 @@ if __name__ == '__main__':
     method = args.paths_selection
     tokenizer = args.tokenizer
     testing = args.testing
+    predicting = args.predicting
     model_path = args.model_path
     eval_file_path = args.eval_file_path
     word_embd_path = args.word_embd_path
 
     if not no_gpu_conf:
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-        os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                           per_process_gpu_memory_fraction=0.5))
     else:
@@ -102,6 +107,14 @@ if __name__ == '__main__':
             '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_test.json'.format(path, limit, method,
                                                                                              tokenizer))
         test_document_store = pickle.load(open('{}/test_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
+
+    if predicting:
+        test_no_label = pd.read_json(
+            '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_test_no_label.json'.format(path, limit,
+                                                                                                           method,
+                                                                                                           tokenizer))
+        test_no_label_document_store = pickle.load(
+            open('{}/test_no_label_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     max_ent_len = 1
     max_rel_len = max(train_document_store.max_tokens, dev_document_store.max_tokens)
@@ -172,6 +185,20 @@ if __name__ == '__main__':
                                           max_ent_len=max_ent_len,
                                           rel_retrieve_params=rel_retrieve_params,
                                           ent_retrieve_params=ent_retrieve_params)
+    if predicting:
+        prediction_tensors = get_medhop_tensors(test_no_label['relation_paths'],
+                                                test_no_label['entity_paths'],
+                                                test_no_label['relation'],
+                                                None,
+                                                test_no_label_document_store,
+                                                word2vec_embeddings,
+                                                word2vec_embeddings,
+                                                target_embeddings,
+                                                max_path_len=max_path_len,
+                                                max_rel_len=max_rel_len,
+                                                max_ent_len=max_ent_len,
+                                                rel_retrieve_params=rel_retrieve_params,
+                                                ent_retrieve_params=ent_retrieve_params)
 
     (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = train_tensors
 
@@ -179,27 +206,52 @@ if __name__ == '__main__':
     neg = len(np.argwhere(label == 0))
     positive_prop = float(pos) / neg
 
-    tensor_dict = {'rel_seq': rel_seq,
-                   'ent_seq': ent_seq,
-                   'seq_len': path_len,
-                   'rel_len': rel_len,
-                   'ent_len': ent_len,
-                   'target_rel': target_rel}
     train_batch_generator = ProportionedPartitionBatchGenerator(partition, label, batch_size=batch_size, permute=True,
                                                                 positive_prop=positive_prop,
-                                                                tensor_dict=tensor_dict)
+                                                                tensor_dict={'rel_seq': rel_seq,
+                                                                             'ent_seq': ent_seq,
+                                                                             'seq_len': path_len,
+                                                                             'rel_len': rel_len,
+                                                                             'ent_len': ent_len,
+                                                                             'target_rel': target_rel})
     print('Positives per batch: {} \nNegatives per batch: {}'.format(train_batch_generator.positive_batch_size,
                                                                      train_batch_generator.negative_batch_size))
     train_eval_batch_generator = PartitionBatchGenerator(partition, label, batch_size=batch_size, permute=False,
-                                                         tensor_dict=tensor_dict)
+                                                         tensor_dict={'rel_seq': rel_seq,
+                                                                      'ent_seq': ent_seq,
+                                                                      'seq_len': path_len,
+                                                                      'rel_len': rel_len,
+                                                                      'ent_len': ent_len,
+                                                                      'target_rel': target_rel})
     (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = dev_tensors
     dev_batch_generator = PartitionBatchGenerator(partition, label, batch_size=batch_size, permute=False,
-                                                  tensor_dict=tensor_dict)
+                                                  tensor_dict={'rel_seq': rel_seq,
+                                                               'ent_seq': ent_seq,
+                                                               'seq_len': path_len,
+                                                               'rel_len': rel_len,
+                                                               'ent_len': ent_len,
+                                                               'target_rel': target_rel})
 
     if testing:
         (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition, label) = test_tensors
         test_batch_generator = PartitionBatchGenerator(partition, label, batch_size=batch_size, permute=False,
-                                                       tensor_dict=tensor_dict)
+                                                       tensor_dict={'rel_seq': rel_seq,
+                                                                    'ent_seq': ent_seq,
+                                                                    'seq_len': path_len,
+                                                                    'rel_len': rel_len,
+                                                                    'ent_len': ent_len,
+                                                                    'target_rel': target_rel})
+
+    if predicting:
+        (rel_seq, ent_seq, path_len, rel_len, ent_len, target_rel, partition) = prediction_tensors
+        prediction_batch_generator = PartitionBatchGenerator(partition, label=None, batch_size=batch_size,
+                                                             permute=False,
+                                                             tensor_dict={'rel_seq': rel_seq,
+                                                                          'ent_seq': ent_seq,
+                                                                          'seq_len': path_len,
+                                                                          'rel_len': rel_len,
+                                                                          'ent_len': ent_len,
+                                                                          'target_rel': target_rel})
 
     model_params = {
         'max_path_len': max_path_len,
@@ -282,13 +334,13 @@ if __name__ == '__main__':
     print(model.params_str)
     print(pprint.pformat(model.train_variables))
 
-    if not testing:
+    if not testing and not predicting:
         train_model(model, train=train, train_batch_generator=train_batch_generator,
                     train_eval_batch_generator=train_eval_batch_generator,
                     dev=dev, dev_batch_generator=dev_batch_generator, model_name=model_name,
                     run_id_params=run_id_params,
                     num_epochs=num_epochs, config=config, check_period=50)
-    else:
+    elif not predicting:
         word_embd = word2vec_embeddings.embed_sequence(seq=None, name='node_embedder', max_norm=None,
                                                        with_projection=True,
                                                        projection_activation='tanh',
@@ -296,3 +348,6 @@ if __name__ == '__main__':
         evaluate_model(model, model_path=model_path, train=train, train_eval_batch_generator=train_eval_batch_generator,
                        dev=dev, dev_batch_generator=dev_batch_generator, test=test,
                        test_batch_generator=test_batch_generator, eval_file_path=eval_file_path, word_embd=word_embd)
+    else:
+        generate_prediction(model, model_path=model_path, test=test_no_label,
+                            test_batch_generator=prediction_batch_generator, eval_file_path=eval_file_path)
