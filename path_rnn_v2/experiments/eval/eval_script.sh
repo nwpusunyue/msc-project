@@ -84,9 +84,13 @@ then
                 --l2=${l2}
         fi
     done
-elif [ "$subdir" = "baseline_truncated_relation" ] || [ "$subdir" = "lstm_truncated_relation" ] || [ "$subdir" = "attention_truncated_relation" ]
+elif [ "$subdir" = "baseline_truncated_relation" ] || [ "$subdir" = "lstm_truncated_relation" ] || \
+     [ "$subdir" = "attention_truncated_relation" ] || [ "$subdir" = "baseline_sentence_relation" ] || \
+     [ "$subdir" = "lstm_sentence_relation" ] || [ "$subdir" = "baseline_truncated_relation_neighb" ] || \
+     [ "$subdir" = "baseline_truncated_relation_entity" ]
 then
-    regex="emb_dim=([0-9]+)_l2=([0-9]+\.[0-9]+)_drop=([0-9]+\.[0-9]+|None)"
+    regex="emb_dim=([0-9]+)_l2=([0-9]+\.[0-9]+)_drop=([0-9]+\.[0-9]+|None)_(.+)"
+    regex_2="tokenizer=(.+)_"
     for entry in ./textual_chains_of_reasoning_models/${subdir}/*
     do
         echo "Entry $entry"
@@ -95,14 +99,31 @@ then
             dim="${BASH_REMATCH[1]}"
             l2="${BASH_REMATCH[2]}"
             drop="${BASH_REMATCH[3]}"
-            echo "${dim} ${l2} ${drop}"
+
+            if [[ ${BASH_REMATCH[4]} =~ $regex_2 ]]
+            then
+                tokenizer="${BASH_REMATCH[1]}"
+            else
+                tokenizer=punkt
+            fi
+
+            if [ "$tokenizer" = "genia" ];
+            then
+                word_embd_path=./medline_word2vec
+            else
+                word_embd_path=./medhop_word2vec_${tokenizer}_v2
+            fi
+
+            echo "${dim} ${l2} ${drop} ${tokenizer} ${word_embd_path}"
 
             PYTHONPATH=./ python -u ./path_rnn_v2/experiments/${basedir}/${subdir}.py \
-                --emb_dim=${dim} \
-                --l2=${l2} \
-                --testing \
-                --model_path="${entry}/model" \
-                --eval_file_path=${eval_file_path}
+                    --emb_dim=${dim} \
+                    --l2=${l2} \
+                    --tokenizer=${tokenizer} \
+                    --testing \
+                    --word_embd_path=${word_embd_path} \
+                    --model_path="${entry}/model" \
+                    --eval_file_path=${eval_file_path}
         fi
     done
 fi
