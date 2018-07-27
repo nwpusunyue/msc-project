@@ -11,7 +11,6 @@ from parsing.path_search import (
     shortest_paths_plus_threshold,
 )
 
-
 path_search_method = {
     'shortest': shortest_paths,
     'shortest_plus': shortest_paths_plus_threshold,
@@ -71,9 +70,11 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None, limit=None):
         'target': [],
         'relation': [],
         'entity_paths': [],
-        'relation_paths': [],
-        'label': []
+        'relation_paths': []
     }
+    if 'answer' in df.columns:
+        dataset['label'] = []
+
     positive_ex_cnt = 0
     negative_ex_cnt = 0
     total = 0
@@ -83,61 +84,79 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None, limit=None):
         relation = row['relation']
         graph = row['graph']
 
-        answer = row['answer']
-        non_answer = [c for c in row['candidates'] if c != answer]
+        if 'answer' in row.axes[0].tolist():
+            answer = row['answer']
+            non_answer = [c for c in row['candidates'] if c != answer]
 
-        try:
-            total += 1
-            # positive example
-            entity_paths, rel_paths = get_paths(graph,
-                                                answer,
-                                                target,
-                                                path_search_method_name=path_search_method_name,
-                                                cutoff=cutoff,
-                                                limit=limit)
-
-            dataset['id'].append(question_id)
-            dataset['source'].append(answer)
-            dataset['target'].append(target)
-            dataset['relation'].append(relation)
-            dataset['entity_paths'].append(entity_paths)
-            dataset['relation_paths'].append(rel_paths)
-            dataset['label'].append(1)
-        except (nx.NetworkXNoPath, EntityNotFoundException) as e:
-            print(type(e))
-            positive_ex_cnt += 1
-            pass
-
-        # negative examples
-        for src in non_answer:
-            total += 1
             try:
+                total += 1
+                # positive example
                 entity_paths, rel_paths = get_paths(graph,
-                                                    src,
+                                                    answer,
                                                     target,
+                                                    path_search_method_name=path_search_method_name,
                                                     cutoff=cutoff,
-                                                    limit=limit,
-                                                    path_search_method_name=path_search_method_name)
+                                                    limit=limit)
 
                 dataset['id'].append(question_id)
-                dataset['source'].append(src)
+                dataset['source'].append(answer)
                 dataset['target'].append(target)
                 dataset['relation'].append(relation)
                 dataset['entity_paths'].append(entity_paths)
                 dataset['relation_paths'].append(rel_paths)
-                dataset['label'].append(0)
-            except Exception as e:
+                dataset['label'].append(1)
+            except (nx.NetworkXNoPath, EntityNotFoundException) as e:
                 print(type(e))
-                negative_ex_cnt += 1
+                positive_ex_cnt += 1
                 pass
 
+            # negative examples
+            for src in non_answer:
+                total += 1
+                try:
+                    entity_paths, rel_paths = get_paths(graph,
+                                                        src,
+                                                        target,
+                                                        cutoff=cutoff,
+                                                        limit=limit,
+                                                        path_search_method_name=path_search_method_name)
+
+                    dataset['id'].append(question_id)
+                    dataset['source'].append(src)
+                    dataset['target'].append(target)
+                    dataset['relation'].append(relation)
+                    dataset['entity_paths'].append(entity_paths)
+                    dataset['relation_paths'].append(rel_paths)
+                    dataset['label'].append(0)
+                except Exception as e:
+                    print(type(e))
+                    negative_ex_cnt += 1
+                    pass
+        else:
+            candidates = row['candidates']
+            for c in candidates:
+                total += 1
+                try:
+                    entity_paths, rel_paths = get_paths(graph,
+                                                        c,
+                                                        target,
+                                                        cutoff=cutoff,
+                                                        limit=limit,
+                                                        path_search_method_name=path_search_method_name)
+
+                    dataset['id'].append(question_id)
+                    dataset['source'].append(c)
+                    dataset['target'].append(target)
+                    dataset['relation'].append(relation)
+                    dataset['entity_paths'].append(entity_paths)
+                    dataset['relation_paths'].append(rel_paths)
+                except Exception as e:
+                    print(type(e))
+                    pass
     print('Total examples: {}\n'
-          'Positive example failures: {}\n'
-          'Negative example failures: {}\n'
           'Total with path: {}'.format(total,
-                                       positive_ex_cnt,
-                                       negative_ex_cnt,
                                        len(dataset['id'])))
+
     return dataset
 
 

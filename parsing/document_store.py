@@ -84,9 +84,17 @@ class DocumentStore:
                                               replacement_2=replacement_2)
         return context
 
-    def get_entity_neighb(self, idx, ent, neighb_size=0, replacement=None):
+    def get_min_distance(self, idx, source, target):
+        pos_source = self.document_entities[idx][source]
+        pos_target = self.document_entities[idx][target]
+        return min([abs(p[0] - p[1]) for p in product(pos_source, pos_target)])
+
+    def get_entity_neighb(self, idx, ent, neighb_size=0, replacement=None, end_token=None):
         if neighb_size == 0:
-            return [ent if replacement is None else replacement]
+            if ent in self.document_entities[idx]:
+                return [ent if replacement is None else replacement]
+            else :
+                raise KeyError(ent)
 
         doc = self.documents[idx]
         ent_pos = self.document_entities[idx][ent]
@@ -104,10 +112,7 @@ class DocumentStore:
                         ent_neighb.append(ent)
                 else:
                     ent_neighb.append(doc[p])
+            if end_token is not None:
+                ent_neighb.append(end_token)
 
         return ent_neighb
-
-    def get_min_distance(self, idx, source, target):
-        pos_source = self.document_entities[idx][source]
-        pos_target = self.document_entities[idx][target]
-        return min([abs(p[0] - p[1]) for p in product(pos_source, pos_target)])

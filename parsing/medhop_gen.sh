@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 for lim in 100
 do
-  for tok in genia
+  for tok in genia punkt
   do
-    for sent_tok in genia
+    for type in test_mini_no_label
     do
-      for type in test train dev train_mini
+      for method in shortest
       do
-        for method in shortest
-        do
-          echo "${type} ${lim} ${tok} ${method}"
+        if [ ${tok} = "genia" ];
+        then
+          sent_tok=genia
+        else
+          sent_tok=nltk
+        fi
+
+        echo "${type} ${lim} ${tok} ${sent_tok} ${method}"
           PYTHONPATH=../ python -u \
                 ../parsing/medhop_parser_pipeline.py \
                 "../qangaroo_v1.1/medhop/${type}.json" \
@@ -21,7 +26,6 @@ do
                 --path_search_method=${method} \
                 --tokenizer=${tok} \
                 --sent_tokenizer=${sent_tok}
-        done
       done
     done
   done
