@@ -39,6 +39,10 @@ parser.add_argument('--limit',
                     type=int,
                     default=100,
                     help='Max number of paths per example')
+parser.add_argument('--tokenizer',
+                    type=str,
+                    default='punkt',
+                    help='Tokenizer used for the dataset')
 parser.add_argument('--testing',
                     action='store_true',
                     help='If this is set, testing is run instead of training')
@@ -64,6 +68,7 @@ if __name__ == '__main__':
     l2 = args.l2
     dropout = args.dropout
     method = args.paths_selection
+    tokenizer = args.tokenizer
     testing = args.testing
     model_path = args.model_path
     eval_file_path = args.eval_file_path
@@ -84,20 +89,23 @@ if __name__ == '__main__':
 
     path = './data'
     model_name = 'baseline_truncated_relation'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_limit={}_balanced'.format(emb_dim, l2, dropout, method, limit)
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_balanced'.format(emb_dim, l2, dropout, method,
+                                                                                     tokenizer)
 
     train = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_train.json'.format(path, limit, method))
-    train_document_store = pickle.load(open('{}/train_doc_store_punkt.pickle'.format(path), 'rb'))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_train.json'.format(path, limit, method,
+                                                                                          tokenizer))
+    train_document_store = pickle.load(open('{}/train_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     dev = pd.read_json(
-        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_dev.json'.format(path, limit, method))
-    dev_document_store = pickle.load(open('{}/dev_doc_store_punkt.pickle'.format(path), 'rb'))
+        '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_dev.json'.format(path, limit, method, tokenizer))
+    dev_document_store = pickle.load(open('{}/dev_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     if testing:
         test = pd.read_json(
-            '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer=punkt_medhop_test.json'.format(path, limit, method))
-        test_document_store = pickle.load(open('{}/test_doc_store_punkt.pickle'.format(path), 'rb'))
+            '{}/sentwise=F_cutoff=4_limit={}_method={}_tokenizer={}_medhop_test.json'.format(path, limit, method,
+                                                                                             tokenizer))
+        test_document_store = pickle.load(open('{}/test_doc_store_{}.pickle'.format(path, tokenizer), 'rb'))
 
     max_ent_len = 1
     max_rel_len = 520
