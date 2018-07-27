@@ -136,13 +136,20 @@ class PartitionBatchGenerator:
         return self.idxs_generator.epochs_completed
 
     def _get_data(self, idxs):
-        ranges = self.partition[idxs]
-        labels = self.label[idxs]
-        tensor_idxs = list(chain.from_iterable([list(range(ranges[i, 0], ranges[i, 1]))
-                                                for i in range(len(idxs))]))
+        if self.label is not None:
+            ranges = self.partition[idxs]
+            labels = self.label[idxs]
+            tensor_idxs = list(chain.from_iterable([list(range(ranges[i, 0], ranges[i, 1]))
+                                                    for i in range(len(idxs))]))
 
-        batch_tensor_dict = {'partition': self._generate_partition(ranges),
-                             'label': labels}
+            batch_tensor_dict = {'partition': self._generate_partition(ranges),
+                                 'label': labels}
+        else:
+            ranges = self.partition[idxs]
+            tensor_idxs = list(chain.from_iterable([list(range(ranges[i, 0], ranges[i, 1]))
+                                                    for i in range(len(idxs))]))
+
+            batch_tensor_dict = {'partition': self._generate_partition(ranges)}
         for key, tensor in self.tensor_dict.items():
             batch_tensor_dict[key] = tensor[tensor_idxs]
 
@@ -280,4 +287,3 @@ if __name__ == '__main__':
 
     while batch_gen.epochs_completed < 3:
         batch_gen.get_batch(debug=True)
-

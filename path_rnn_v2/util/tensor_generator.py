@@ -78,16 +78,24 @@ def get_medhop_tensors(query_rel_seq,
         partition[query_idx, 0] = partition_start
         partition[query_idx, 1] = partition_end
 
-    label = np.array(query_label)
+    if query_label is not None:
+        label = np.array(query_label)
 
+        return (rel_seq,
+                ent_seq,
+                path_len,
+                rel_len,
+                ent_len,
+                target_rel,
+                partition,
+                label)
     return (rel_seq,
             ent_seq,
             path_len,
             rel_len,
             ent_len,
             target_rel,
-            partition,
-            label)
+            partition)
 
 
 def get_medhop_distance_tensors(query_rel_seq,
