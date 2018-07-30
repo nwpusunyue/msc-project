@@ -43,10 +43,17 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
             # [batch_size, repr_dim x 2]
             out, _ = attend_sequence(out, seq_length, module='additive')
         elif module == 'dense':
-            # [batch_size, repr_dim x 2]
-            out = tf.layers.dense(sequence, repr_dim)
+            # [batch_size, repr_dim]
+            out = tf.layers.dense(tf.reshape(sequence, shape=[-1, sequence.get_shape()[1] * sequence.get_shape()[2]]),
+                                  repr_dim)
+        elif module == 'conv':
+            # pbatch_size, repr_dim x 2]
+            out = conv_net(repr_dim, sequence, num_layers=1, activation=activation_from_string(activation),
+                           **extra_args)
+        elif module == 'conv_lstm':
+            out = conv_lstm(repr_dim, sequence, seq_length, **extra_args)
         elif module == 'average':
-            # clip seq lengths such that if a sequence has 0 tokens
+            # clip seq lengths such that if a sequence has 0 tokens_
             # division by 0 is avoided. It is assumed that a tensor with
             # 0 tokens is filled with a special PAD character which has a 0-filled
             # vector repr
@@ -113,11 +120,40 @@ def bi_rnn(size, rnn_cell, sequence, seq_length, with_projection=False, projecti
                    last_output)
 
 
+# CNN encoders
+def conv_net(repr_dim, sequence, num_layers, conv_width=3, activation=tf.nn.relu):
+    out = sequence
+    for i in range(num_layers):
+        out = _convolutional_block(inputs=out, out_channels=repr_dim, conv_width=conv_width, activation=activation,
+                                   name='conv_{}'.format(i))
+    return out
+
+
+def conv_lstm(repr_dim, sequence, seq_length, conv_activation=tf.nn.relu, conv_width=3, lstm_with_projection=False,
+              lstm_projection_activation=None, lstm_with_backward=True,
+              lstm_last_output=True):
+    out = conv_net(repr_dim, sequence, num_layers=1, activation=activation_from_string(conv_activation),
+                   conv_width=conv_width)
+    assert sequence.get_shape()[1].value == out.get_shape()[1].value
+    out = bi_lstm(repr_dim, out, seq_length, with_projection=lstm_with_projection,
+                  projection_activation=lstm_projection_activation, with_backward=lstm_with_backward,
+                  last_output=lstm_last_output)
+    return out
+
+
+def _convolutional_block(inputs, out_channels, conv_width=3, name='conv', activation=tf.nn.relu):
+    channels = inputs.get_shape()[2].value
+    # [conv_width, in_channels, out_channels]
+    filter = tf.get_variable(name + '_filer', [conv_width, channels, out_channels])
+    out = tf.nn.conv1d(inputs, filter, stride=1, padding='SAME', name=name)
+    return activation(out)
+
+
 if __name__ == '__main__':
     batch_size = 3
     max_sequence_length = 5
     input_dim = 10
-    repr_dim = 15
+    repr_dim = 16
 
     test_seq_length = [3, 4, 0]
     test_sequence = np.zeros([batch_size, max_sequence_length, input_dim])
@@ -133,6 +169,14 @@ if __name__ == '__main__':
     gru_encoded = encoder(sequence, seq_length, module='gru', repr_dim=repr_dim, name='gru')
     identity_encoded = encoder(unit_sequence, seq_length, module='identity', name='identity')
     attention_encoded = encoder(sequence, seq_length, repr_dim=repr_dim, module='additive_attention', name='attention')
+    conv_lstm_encoded = encoder(sequence, seq_length, repr_dim=repr_dim, module='conv_lstm', name='conv_lstm',
+                                extra_args={
+                                    'conv_activation': 'tanh',
+                                    'conv_width': 2,
+                                    'lstm_with_projection': False,
+                                    'lstm_with_backward': True,
+                                    'lstm_last_output': True
+                                })
 
     with tf.train.MonitoredTrainingSession() as sess:
         test_encoded = sess.run(avg_encoded,
@@ -154,6 +198,15 @@ if __name__ == '__main__':
         assert (test_encoded[2, :] == 0).all()
 
         test_encoded = sess.run(attention_encoded,
+                                feed_dict={
+                                    sequence: test_sequence,
+                                    seq_length: test_seq_length
+                                })
+
+        assert (test_encoded.shape == (batch_size, repr_dim * 2))
+        assert (test_encoded[2] == 0.0).all()
+
+        test_encoded = sess.run(conv_lstm_encoded,
                                 feed_dict={
                                     sequence: test_sequence,
                                     seq_length: test_seq_length
