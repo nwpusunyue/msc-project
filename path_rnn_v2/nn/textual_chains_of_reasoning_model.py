@@ -7,6 +7,7 @@ from path_rnn_v2.nn.path_rnn import PathRnn
 from path_rnn_v2.nn.textual_path_elem_encoder import encode_path_elem
 from path_rnn_v2.util.embeddings import RandomEmbeddings
 from path_rnn_v2.util.ops import create_reset_metric
+from path_rnn_v2.util.ops import rank_loss
 
 
 class TextualChainsOfReasoningModel(BaseModel):
@@ -24,6 +25,7 @@ class TextualChainsOfReasoningModel(BaseModel):
 
     def _setup_model(self, model_params):
         self.rel_only = model_params['rel_only'] if 'rel_only' in model_params else False
+        self.use_rank_loss = model_params['use_rank_loss'] if 'use_rank_loss' in model_params else False
         self.max_path_len = model_params['max_path_len']
         self.label_smoothing = model_params['label_smoothing'] if 'label_smoothing' in model_params else None
 
@@ -33,6 +35,11 @@ class TextualChainsOfReasoningModel(BaseModel):
         self.rel_encoder_params = model_params['relation_encoder_params']
         self.rel_encoder_name = 'rel_seq_encoder' if 'rel_encoder_name' not in model_params else model_params[
             'rel_encoder_name']
+
+        if self.use_rank_loss:
+            self.margin = model_params['margin'] if 'margin' in model_params else 0.0
+        else:
+            self.margin = None
 
         if not self.rel_only:
             self.max_ent_len = model_params['max_ent_len']
@@ -79,17 +86,21 @@ class TextualChainsOfReasoningModel(BaseModel):
                                     is_eval=self.is_eval,
                                     **self.path_rnn_params)
 
-        if self.label_smoothing is not None:
-            # [num_queries]
-            smoothed_label = tf.cast(self.label, dtype=score.dtype) * (
-                    1 - self.label_smoothing) + 0.5 * self.label_smoothing
-        else:
-            smoothed_label = tf.cast(self.label, dtype=score.dtype)
-
         prob = tf.sigmoid(score)
-        loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(labels=smoothed_label,
-                                                    logits=score))
+        if not self.use_rank_loss:
+            if self.label_smoothing is not None:
+                # [num_queries]
+                smoothed_label = tf.cast(self.label, dtype=score.dtype) * (
+                        1 - self.label_smoothing) + 0.5 * self.label_smoothing
+            else:
+                smoothed_label = tf.cast(self.label, dtype=score.dtype)
+
+            loss = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(labels=smoothed_label,
+                                                        logits=score))
+        else:
+            loss = rank_loss(y_true=self.label, y_pred=prob, margin=self.margin)
+            #loss = tf.losses.hinge_loss(labels=self.label, logits=score)
 
         self._tensors['loss'] = loss
         self._tensors['prob'] = prob
@@ -173,6 +184,8 @@ class TextualChainsOfReasoningModel(BaseModel):
                 'Path RNN params:\n'
                 '{}\n'
                 '{}\n'
+                'Use rank loss: {}\n'
+                'Rank loss margin: {}\n'
                 '===============Train parameters=============\n'
                 '{}\n'
                 '============================================\n'.format(self.max_path_len,
@@ -181,6 +194,8 @@ class TextualChainsOfReasoningModel(BaseModel):
                                                                         self._ent_params_str(),
                                                                         pprint.pformat(self.path_encoder_params),
                                                                         pprint.pformat(self.path_rnn_params),
+                                                                        self.use_rank_loss,
+                                                                        self.margin,
                                                                         pprint.pformat(self.train_params)))
 
     def _rel_params_str(self):
