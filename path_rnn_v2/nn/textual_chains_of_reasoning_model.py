@@ -21,7 +21,7 @@ class TextualChainsOfReasoningModel(BaseModel):
         self._setup_evaluation()
         self._setup_summaries()
         self._variables = tf.global_variables()
-        self._saver = tf.train.Saver()
+        self._saver = tf.train.Saver([var for var in self.train_variables])
 
     def _setup_model(self, model_params):
         self.rel_only = model_params['rel_only'] if 'rel_only' in model_params else False
