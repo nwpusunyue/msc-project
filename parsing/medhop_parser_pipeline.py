@@ -8,7 +8,7 @@ import pandas as pd
 from parsing.genia.word_tokenize import GTBTokenizer
 from nltk.tokenize import TreebankWordTokenizer, WordPunctTokenizer
 from parsing.medhop_graph_extraction import preprocess_medhop
-from parsing.medhop_path_extraction import extract_paths_dataset
+from parsing.medhop_path_extraction import extract_paths_dataset, extract_source_target_dataset
 from parsing.sent_tokenize import NLTKSentTokenizer, GeniaSentTokenizer
 
 np.random.seed(0)
@@ -40,6 +40,9 @@ parser.add_argument('document_store_path',
 parser.add_argument('--sentence_wise',
                     action='store_true',
                     help='If this is set, the paths will be between entities in the same sentence.')
+parser.add_argument('--masked',
+                    action='store_true',
+                    help='If this is set, masks will also be matched as entities.')
 parser.add_argument('--entities_path',
                     type=str,
                     default=None,
@@ -64,6 +67,9 @@ parser.add_argument('--sent_tokenizer',
                     type=str,
                     default='nltk',
                     help='One of nltk, genia')
+parser.add_argument('--stupid_dataset',
+                    action='store_true',
+                    help='If set it will generate a dumb dataset with only the source and target on the chain')
 
 print('Start')
 args = parser.parse_args()
@@ -76,7 +82,9 @@ print('Input path:{}\n'
       'Cutoff:{}\n'
       'Limit:{}\n'
       'Tokenizer:{}\n'
-      'Sent tokenizer: {}\n'.format(args.input_path,
+      'Sent tokenizer: {}\n'
+      'Masked: {}\n'
+      'Stupid dataset: {}\n'.format(args.input_path,
                               args.output_path,
                               args.document_store_path,
                               args.entities_path,
@@ -85,21 +93,29 @@ print('Input path:{}\n'
                               args.cutoff,
                               args.limit,
                               args.tokenizer,
-                              args.sent_tokenizer), flush=True)
+                              args.sent_tokenizer,
+                              args.masked,
+                              args.stupid_dataset), flush=True)
 
 df = pd.read_json(args.input_path, orient='records')
 df, document_store = preprocess_medhop(df,
                                        sentence_wise=args.sentence_wise,
                                        entity_list_path=args.entities_path,
                                        word_tokenizer=tokenizer[args.tokenizer],
-                                       sent_tokenizer=sent_tokenizer[args.sent_tokenizer]
+                                       sent_tokenizer=sent_tokenizer[args.sent_tokenizer],
+                                       allow_masks=args.masked,
+                                       skip_graph=args.stupid_dataset
                                        )
-paths_dataset = extract_paths_dataset(df,
-                                      path_search_method_name=args.path_search_method,
-                                      cutoff=args.cutoff,
-                                      limit=args.limit
-                                      )
+if not args.stupid_dataset:
+    paths_dataset = extract_paths_dataset(df,
+                                          path_search_method_name=args.path_search_method,
+                                          cutoff=args.cutoff,
+                                          limit=args.limit
+                                          )
+else:
+    paths_dataset = extract_source_target_dataset(df)
 
-pickle.dump(document_store, open(args.document_store_path, 'wb'))
+if not args.stupid_dataset:
+    pickle.dump(document_store, open(args.document_store_path, 'wb'))
 with open(args.output_path, "w") as text_file:
     text_file.write(json.dumps(paths_dataset))

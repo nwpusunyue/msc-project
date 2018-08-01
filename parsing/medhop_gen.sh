@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 for lim in 100
 do
-  for tok in genia punkt
+  for tok in punkt genia
   do
-    for type in test_mini_no_label
+    for type in train dev test
     do
       for method in shortest
       do
@@ -18,14 +18,15 @@ do
           PYTHONPATH=../ python -u \
                 ../parsing/medhop_parser_pipeline.py \
                 "../qangaroo_v1.1/medhop/${type}.json" \
-                "../data/sentwise=F_cutoff=4_limit=${lim}_method=${method}_tokenizer=${tok}_medhop_${type}.json" \
-                "../data/${type}_doc_store_${tok}.pickle" \
+                "../data/sentwise=F_cutoff=4_limit=${lim}_method=${method}_tokenizer=${tok}_medhop_${type}_stupid.json" \
+                "../data/${type}_stupid_doc_store_${tok}.pickle" \
                 --limit=${lim} \
                 --cutoff=4 \
                 --entities_path='./entities.txt' \
                 --path_search_method=${method} \
                 --tokenizer=${tok} \
-                --sent_tokenizer=${sent_tok}
+                --sent_tokenizer=${sent_tok} \
+                --stupid_dataset
       done
     done
   done

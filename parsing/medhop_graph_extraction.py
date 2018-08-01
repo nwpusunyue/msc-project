@@ -12,6 +12,7 @@ from parsing.special_tokens import *
 from tqdm import tqdm
 
 biomed_entity = re.compile("[ABCDEFGHIKMOPQS][0-9,A-Z]+[0-9]+")
+mask = re.compile("___MASK(?:[0-9])+___")
 
 
 def read_biomed_entity_list(filename):
@@ -28,14 +29,16 @@ def extract_target_and_relation(df):
     df['relation'] = df['query'].apply(lambda q: regex.match(q).group(1))
 
 
-def extract_entities(text, biomed_entities=None, word_tokenizer=WordPunctTokenizer()):
+def extract_entities(text, biomed_entities=None, word_tokenizer=WordPunctTokenizer(), allow_masks=False):
     unique_entities = {}
     entity_idxs = []
 
     tokenized_text = word_tokenizer.tokenize(text)
+
     for i, t in enumerate(tokenized_text):
-        if (biomed_entities is not None and t in biomed_entities) or (
-                biomed_entities is None and biomed_entity.match(t)):
+        if (biomed_entities is not None and t in biomed_entities) or \
+                (biomed_entities is None and biomed_entity.match(t)) or \
+                (allow_masks and mask.match(t)):
             entity_idxs.append(i)
             if t not in unique_entities:
                 unique_entities[t] = [i]
@@ -48,16 +51,18 @@ def extract_entities(text, biomed_entities=None, word_tokenizer=WordPunctTokeniz
 
 
 def extract_medhop_instances(document, biomed_entities=None, sentence_wise=True, word_tokenizer=WordPunctTokenizer(),
-                             sent_tokenizer=NLTKSentTokenizer()):
+                             sent_tokenizer=NLTKSentTokenizer(), allow_masks=False):
     if sentence_wise:
         document_instances = list(filter(lambda x: len(x[1]) > 1,
-                                         [extract_entities(s, biomed_entities, word_tokenizer) for s in
+                                         [extract_entities(s, biomed_entities, word_tokenizer, allow_masks=allow_masks)
+                                          for s in
                                           sent_tokenizer.sent_tokenize(document)]))
     else:
         doc_sent_instances = []
         sent_offset = 0
         for sent in sent_tokenizer.sent_tokenize(document):
-            (tokenized_sent, unique_entities) = extract_entities(sent, biomed_entities, word_tokenizer)
+            (tokenized_sent, unique_entities) = extract_entities(sent, biomed_entities, word_tokenizer,
+                                                                 allow_masks=allow_masks)
             doc_sent_instances.append((tokenized_sent, unique_entities, sent_offset))
             sent_offset += len(tokenized_sent)
 
@@ -97,7 +102,8 @@ def extract_binary_medhop_instances(doc_idx, medhop_instances):
 
 
 def extract_document_binary_medhop_instances(documents, sentence_wise=True, entity_list_path=None,
-                                             word_tokenizer=WordPunctTokenizer(), sent_tokenizer=NLTKSentTokenizer()):
+                                             word_tokenizer=WordPunctTokenizer(), sent_tokenizer=NLTKSentTokenizer(),
+                                             allow_masks=False):
     binary_medhop_instances = []
     medhop_instances = []
     biomed_entities = None
@@ -108,7 +114,7 @@ def extract_document_binary_medhop_instances(documents, sentence_wise=True, enti
 
     for d_idx, d in tqdm(enumerate(documents)):
         document_medhop_instances = extract_medhop_instances(d, biomed_entities, sentence_wise, word_tokenizer,
-                                                             sent_tokenizer)
+                                                             sent_tokenizer, allow_masks=allow_masks)
         medhop_instances.append(document_medhop_instances)
 
         document_binary_medhop_instances = extract_binary_medhop_instances(d_idx, document_medhop_instances)
@@ -127,7 +133,7 @@ def extract_query_binary_medhop_instances(supports, documents, binary_medhop_ins
 
 
 def extract_graph(df, sentence_wise=True, entity_list_path=None,
-                  word_tokenizer=WordPunctTokenizer(), sent_tokenizer=NLTKSentTokenizer()):
+                  word_tokenizer=WordPunctTokenizer(), sent_tokenizer=NLTKSentTokenizer(), allow_masks=False):
     # extract all unique supports
     supports = sorted(list(set(chain.from_iterable(df['supports']))))
     print('Total documents: {}'.format(len(supports)))
@@ -135,7 +141,8 @@ def extract_graph(df, sentence_wise=True, entity_list_path=None,
                                                                                        sentence_wise,
                                                                                        entity_list_path,
                                                                                        word_tokenizer,
-                                                                                       sent_tokenizer)
+                                                                                       sent_tokenizer,
+                                                                                       allow_masks=allow_masks)
 
     df['graph'] = df.apply(lambda row: _extract_graph(row['supports'],
                                                       supports,
@@ -175,16 +182,26 @@ def _extract_graph(supports, documents, binary_medhop_instances):
 
 
 def preprocess_medhop(df, sentence_wise=True, entity_list_path=None, sent_tokenizer=NLTKSentTokenizer(),
-                      word_tokenizer=WordPunctTokenizer()):
-    document_store = extract_graph(df, sentence_wise, entity_list_path, word_tokenizer, sent_tokenizer)
-    print('Extracted graph data')
+                      word_tokenizer=WordPunctTokenizer(), allow_masks=False, skip_graph=False):
+    if not skip_graph:
+        document_store = extract_graph(df, sentence_wise, entity_list_path, word_tokenizer, sent_tokenizer,
+                                       allow_masks=allow_masks)
+        print('Extracted graph data')
+    else:
+        document_store = None
     extract_target_and_relation(df)
     print('Extracted target and relation')
     return df.drop('supports', axis=1), document_store
 
 
 if __name__ == "__main__":
-    df = pd.read_json('./qangaroo_v1.1/medhop/train.json', orient='records')
+    import os
+
+    print(os.getcwd())
+    df = pd.read_json('./../qangaroo_v1.1/medhop/train_mini.masked.json', orient='records')
     df, document_store = preprocess_medhop(df,
                                            sentence_wise=False,
-                                           entity_list_path='./parsing/entities.txt')
+                                           entity_list_path='./entities.txt',
+                                           allow_masks=True)
+    for i in range(10):
+        print(document_store.document_entities[i])

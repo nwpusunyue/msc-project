@@ -130,9 +130,10 @@ def conv_net(repr_dim, sequence, num_layers, conv_width=3, activation=tf.nn.relu
 
 
 def conv_lstm(repr_dim, sequence, seq_length, conv_activation=tf.nn.relu, conv_width=3, lstm_with_projection=False,
-              lstm_projection_activation=None, lstm_with_backward=True,
+              conv_out_channels=None, lstm_projection_activation=None, lstm_with_backward=True,
               lstm_last_output=True):
-    out = conv_net(repr_dim, sequence, num_layers=1, activation=activation_from_string(conv_activation),
+    conv_out_channels = repr_dim if conv_out_channels is None else conv_out_channels
+    out = conv_net(conv_out_channels, sequence, num_layers=1, activation=activation_from_string(conv_activation),
                    conv_width=conv_width)
     assert sequence.get_shape()[1].value == out.get_shape()[1].value
     out = bi_lstm(repr_dim, out, seq_length, with_projection=lstm_with_projection,

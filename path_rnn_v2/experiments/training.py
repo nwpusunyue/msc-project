@@ -16,7 +16,7 @@ def medhop_accuracy(dataset, probs):
 
 
 def train_model(model, train, train_batch_generator, train_eval_batch_generator, dev, dev_batch_generator,
-                num_epochs, run_id_params, model_name, check_period=20, config=None):
+                num_epochs, run_id_params, model_name, check_period=20, config=None, no_save=False, base_dir='.'):
     steps = train_batch_generator.batch_count * num_epochs
 
     medhop_acc = []
@@ -25,17 +25,20 @@ def train_model(model, train, train_batch_generator, train_eval_batch_generator,
     start_time = time.strftime('%X_%d.%m.%y')
     run_id = 'run_{}_{}'.format(start_time, run_id_params)
     print('Run id: {}'.format(run_id))
-    model_dir = './textual_chains_of_reasoning_models/{}/{}'.format(model_name, run_id)
-    log_dir = './textual_chains_of_reasoning_logs/{}/{}'.format(model_name, run_id)
-    acc_dir = './textual_chains_of_reasoning_logs/{}/acc_{}.txt'.format(model_name, run_id)
+    model_dir = '{}/textual_chains_of_reasoning_models/{}/{}'.format(base_dir, model_name, run_id)
+    log_dir = '{}/textual_chains_of_reasoning_logs/{}/{}'.format(base_dir, model_name, run_id)
+    acc_dir = '{}/textual_chains_of_reasoning_logs/{}/acc_{}.txt'.format(base_dir, model_name, run_id)
 
-    # make save dir
-    os.makedirs(model_dir)
-    # make summary writer
-    summ_writer = tf.summary.FileWriter(log_dir)
-    summ_writer.add_graph(tf.get_default_graph())
-    # make acc file
-    acc_file = open(acc_dir, 'w+')
+    if not no_save:
+        # make save dir
+        os.makedirs(model_dir)
+        # make summary writer
+        summ_writer = tf.summary.FileWriter(log_dir)
+        # summ_writer.add_graph(tf.get_default_graph())
+        # make acc file
+        acc_file = open(acc_dir, 'w+')
+    else:
+        summ_writer = None
 
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
@@ -57,7 +60,6 @@ def train_model(model, train, train_batch_generator, train_eval_batch_generator,
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_train_eval')
                 train_eval_medhop_acc = medhop_accuracy(train, train_eval_prob)
-
                 print('Train loss: {} Train medhop acc: {}'.format(metrics, train_eval_medhop_acc))
 
                 dev_prob = np.array([])
@@ -75,10 +77,11 @@ def train_model(model, train, train_batch_generator, train_eval_batch_generator,
                 print('Dev loss: {} Dev medhop acc: {}'.format(metrics, dev_medhop_acc))
 
                 medhop_acc.append((train_eval_medhop_acc, dev_medhop_acc))
-                acc_file.write('{}: tr: {} dev: {}\n'.format(i, train_eval_medhop_acc, dev_medhop_acc))
-                acc_file.flush()
+                if not no_save:
+                    acc_file.write('{}: tr: {} dev: {}\n'.format(i, train_eval_medhop_acc, dev_medhop_acc))
+                    acc_file.flush()
 
-                if dev_medhop_acc > max_dev_medhop_acc:
+                if dev_medhop_acc > max_dev_medhop_acc and not no_save:
                     print('Storing model with best dev medhop acc at: {}'.format(model_dir))
                     max_dev_medhop_acc = dev_medhop_acc
                     model.store(sess, '{}/model'.format(model_dir))

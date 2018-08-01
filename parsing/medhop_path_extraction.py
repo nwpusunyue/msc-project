@@ -160,6 +160,77 @@ def extract_paths_dataset(df, path_search_method_name, cutoff=None, limit=None):
     return dataset
 
 
+def extract_source_target_dataset(df):
+    dataset = {
+        'id': [],
+        'source': [],
+        'target': [],
+        'relation': [],
+        'entity_paths': [],
+        'relation_paths': []
+    }
+    if 'answer' in df.columns:
+        dataset['label'] = []
+
+    for index, row in tqdm(df.iterrows()):
+        question_id = row['id']
+        target = row['target']
+        relation = row['relation']
+
+        if 'answer' in row.axes[0].tolist():
+            answer = row['answer']
+            non_answer = [c for c in row['candidates'] if c != answer]
+
+            try:
+                # positive example
+                entity_paths = [[answer, target]]
+                rel_paths = [[-1, -1]]
+
+                dataset['id'].append(question_id)
+                dataset['source'].append(answer)
+                dataset['target'].append(target)
+                dataset['relation'].append(relation)
+                dataset['entity_paths'].append(entity_paths)
+                dataset['relation_paths'].append(rel_paths)
+                dataset['label'].append(1)
+            except (nx.NetworkXNoPath, EntityNotFoundException) as e:
+                print(type(e))
+                pass
+            for src in non_answer:
+                try:
+                    # negative examples
+                    entity_paths = [[src, target]]
+                    rel_paths = [[-1, -1]]
+
+                    dataset['id'].append(question_id)
+                    dataset['source'].append(src)
+                    dataset['target'].append(target)
+                    dataset['relation'].append(relation)
+                    dataset['entity_paths'].append(entity_paths)
+                    dataset['relation_paths'].append(rel_paths)
+                    dataset['label'].append(0)
+                except Exception as e:
+                    print(type(e))
+                    pass
+        else:
+            candidates = row['candidates']
+            for c in candidates:
+                try:
+                    entity_paths = [[c, target]]
+                    rel_paths = [[-1]]
+
+                    dataset['id'].append(question_id)
+                    dataset['source'].append(c)
+                    dataset['target'].append(target)
+                    dataset['relation'].append(relation)
+                    dataset['entity_paths'].append(entity_paths)
+                    dataset['relation_paths'].append(rel_paths)
+                except Exception as e:
+                    print(type(e))
+                    pass
+    return dataset
+
+
 if __name__ == "__main__":
     df = pd.read_json('train_with_graph.json')
     train_dataset = extract_paths_dataset(df, path_search_method_name='shortest_plus', cutoff=1)
