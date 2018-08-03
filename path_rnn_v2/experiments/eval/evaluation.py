@@ -21,6 +21,7 @@ def evaluate_model(model, model_path, train, train_eval_batch_generator, dev, de
 
     with tf.Session(config=config) as sess:
         sess.run(tf.local_variables_initializer())
+        sess.run(tf.global_variables_initializer())
         model.load(sess, path=model_path)
 
         if word_embd is not None:
