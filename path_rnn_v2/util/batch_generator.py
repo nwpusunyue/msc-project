@@ -11,6 +11,7 @@ from path_rnn_v2.util.tensor_generator import get_medhop_tensors
 
 
 class ProportionedPartitionBatchGenerator:
+
     def __init__(self,
                  partition,
                  label,
@@ -89,6 +90,102 @@ class ProportionedPartitionBatchGenerator:
             len = path_range[1] - path_range[0]
             partition[idx, 1] = start + len
             start += len
+        return partition
+
+
+class ProportionedSubsamplingPartitionBatchGenerator:
+
+    def __init__(self,
+                 partition,
+                 label,
+                 tensor_dict,
+                 batch_size,
+                 positive_prop,
+                 partition_limit,
+                 permute=True):
+        '''
+
+        :param path_partition: np array of shape [num_part, 2], indicates start and end of each partition
+        :param label: np array of shape [num_part], label for each example
+        :param tensor_dict: dict of np arrays of shape [num_instances, ...], where
+        each instance is associated with a partition.
+        :param batch_size: batch size to generate
+        :param positive_prop: proportion of elements in each batch that should pe positive
+        :param partition_limit: how many elements should a partition contain at most.
+        '''
+        print('Partition limit: {}'.format(partition_limit))
+        self.size = partition.shape[0]
+        self.batch_size = batch_size
+        self.positive_prop = positive_prop
+        self.partition_limit = partition_limit
+
+        self.partition = partition
+        self.label = label
+        self.tensor_dict = tensor_dict
+
+        self.positive_idx = np.argwhere(self.label == 1).reshape((-1,))
+        self.negative_idx = np.argwhere(self.label == 0).reshape((-1))
+
+        self.positive_batch_size = int(self.positive_prop * self.batch_size)
+        self.negative_batch_size = self.batch_size - self.positive_batch_size
+
+        self.positive_idxs_generator = IndexGenerator(self.positive_idx,
+                                                      self.positive_batch_size,
+                                                      permute=permute)
+        self.negative_ixs_generator = IndexGenerator(self.negative_idx,
+                                                     self.negative_batch_size,
+                                                     permute=permute)
+
+        self.batch_count = max(self.positive_idxs_generator.total_batches, self.negative_ixs_generator.total_batches)
+
+    def get_batch(self, debug=False):
+        '''
+
+        :param debug: will print start and end index of the batch and the retrieved ids
+        :return: (batch_partition_ranges [batch_size, 2],
+                  batch_tensor_dict,
+                  labels [batch_size]
+        '''
+        positive = self.positive_idxs_generator.get_batch_idxs(debug)
+        negative = self.negative_ixs_generator.get_batch_idxs(debug)
+        idxs = np.random.permutation(np.concatenate((positive, negative), axis=0))
+        if debug:
+            print(idxs)
+        return self._get_data(idxs)
+
+    @property
+    def epochs_completed(self):
+        return min(self.positive_idxs_generator.epochs_completed, self.negative_ixs_generator.epochs_completed)
+
+    def _get_data(self, idxs):
+        subsampled_idxs = self._subsample_partitions(idxs)
+        labels = self.label[idxs]
+        tensor_idxs = list(chain.from_iterable(subsampled_idxs))
+        batch_tensor_dict = {'partition': self._generate_partition(subsampled_idxs),
+                             'label': labels}
+        for key, tensor in self.tensor_dict.items():
+            batch_tensor_dict[key] = tensor[tensor_idxs]
+
+        return batch_tensor_dict
+
+    def _subsample_partitions(self, idxs):
+        subsampled_idxs = []
+        for idx in idxs:
+            rng = self.partition[idx]
+            if rng[1] - rng[0] > self.partition_limit:
+                subsampled_idxs.append(np.random.choice(range(rng[0], rng[1]), self.partition_limit, replace=False))
+            else:
+                subsampled_idxs.append(np.array(range(rng[0], rng[1])))
+        return subsampled_idxs
+
+    def _generate_partition(self, ranges):
+        partition = np.zeros(shape=[len(ranges), 2])
+        start = 0
+        for idx, path_range in enumerate(ranges):
+            partition[idx, 0] = start
+            length = path_range.shape[0]
+            partition[idx, 1] = start + length
+            start += length
         return partition
 
 
@@ -285,5 +382,22 @@ if __name__ == '__main__':
     print(batch_gen.positive_idx)
     print(batch_gen.negative_idx)
 
+    while batch_gen.epochs_completed < 3:
+        batch_gen.get_batch(debug=True)
+
+    print('\n\nSubsampling batch generator')
+    train = pd.read_json('./data/sentwise=F_cutoff=4_limit=500_method=all_tokenizer=punkt_medhop_train_mini.json')
+    batch_gen = ProportionedSubsamplingPartitionBatchGenerator(partition,
+                                                               label,
+                                                               tensor_dict={'rel_seq': rel_seq,
+                                                                            'ent_seq': ent_seq,
+                                                                            'seq_len': path_len,
+                                                                            'rel_len': rel_len,
+                                                                            'ent_len': ent_len,
+                                                                            'target_rel': target_rel},
+                                                               batch_size=batch_size,
+                                                               positive_prop=0.2,
+                                                               partition_limit=3,
+                                                               permute=True)
     while batch_gen.epochs_completed < 3:
         batch_gen.get_batch(debug=True)

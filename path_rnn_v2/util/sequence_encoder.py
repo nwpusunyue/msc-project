@@ -52,6 +52,11 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
                            **extra_args)
         elif module == 'conv_lstm':
             out = conv_lstm(repr_dim, sequence, seq_length, **extra_args)
+        elif module == 'conv_lstm_additive_attention':
+            # [batch_size, max_seq_len, repr_dim x 2]
+            out = conv_lstm(repr_dim, sequence, seq_length, **extra_args)
+            # [batch_size, repr_dim]
+            out, _ = attend_sequence(out, seq_length, module='additive')
         elif module == 'average':
             # clip seq lengths such that if a sequence has 0 tokens_
             # division by 0 is avoided. It is assumed that a tensor with
