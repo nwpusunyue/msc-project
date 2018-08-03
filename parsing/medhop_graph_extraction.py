@@ -18,7 +18,7 @@ mask = re.compile("___MASK(?:[0-9])+___")
 def read_biomed_entity_list(filename):
     with open(filename, 'r') as f:
         content = f.readlines()
-    biomed_entities = [x.strip() for x in content]
+    biomed_entities = {x.strip(): '' for x in content}
     return biomed_entities
 
 
