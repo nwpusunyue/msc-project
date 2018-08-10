@@ -14,7 +14,7 @@ from path_rnn_v2.experiments.training import train_model
 from path_rnn_v2.nn.textual_chains_of_reasoning_model import TextualChainsOfReasoningModel
 from path_rnn_v2.util.batch_generator import PartitionBatchGenerator, ProportionedPartitionBatchGenerator, \
     ProportionedSubsamplingPartitionBatchGenerator
-from path_rnn_v2.util.embeddings import RandomEmbeddings, Word2VecEmbeddings
+from path_rnn_v2.util.embeddings import RandomEmbeddings, AugmentedWord2VecEmbeddings, EntityTypeAugmenter
 from path_rnn_v2.util.tensor_generator import get_medhop_tensors
 
 np.random.seed(0)
@@ -45,6 +45,9 @@ def get_basic_parser():
                         type=str,
                         default='./medhop_word2vec_punkt_v2',
                         help='Word embedding path')
+    parser.add_argument('--entity_augment',
+                        action='store_true',
+                        help='If this is set, the entity type is concatenated to the word embedding')
 
     # train params
     parser.add_argument('--batch_size',
@@ -106,6 +109,9 @@ def get_basic_parser():
     parser.add_argument('--base_dir',
                         default='.',
                         help='Base directory for saving the model and the logs.')
+    parser.add_argument('--no_save',
+                        action='store_true',
+                        help='If set no data will be saved.')
     return parser
 
 
@@ -189,7 +195,7 @@ def get_batch(tensors, batch_size, tensor_dict_map, with_label=True):
                                    tensor_dict=tensor_dict)
 
 
-def get_word2vec(word_embd_path, name, masked):
+def get_word2vec(word_embd_path, name, masked, entity_augment):
     special_tokens = [(ENT_1, False),
                       (ENT_2, False),
                       (ENT_X, False),
@@ -199,11 +205,16 @@ def get_word2vec(word_embd_path, name, masked):
                       (PAD, True)]
     if masked:
         special_tokens += [('___MASK{}___'.format(i), False) for i in range(100)]
-    return Word2VecEmbeddings(word_embd_path,
-                              name=name,
-                              unk_token=UNK,
-                              trainable=False,
-                              special_tokens=special_tokens)
+    if entity_augment:
+        augmenter = EntityTypeAugmenter('/home/scimpian/msc-project/parsing/entity_map.txt')
+    else:
+        augmenter = None
+    return AugmentedWord2VecEmbeddings(word_embd_path,
+                                       name=name,
+                                       unk_token=UNK,
+                                       trainable=False,
+                                       special_tokens=special_tokens,
+                                       augmenter=augmenter)
 
 
 def get_target_embd(relations, name, embd_dim):
@@ -220,8 +231,7 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
               model_name, extra_parser_args_adder, extra_args_formatter,
               max_ent_len_retrieve, max_rel_len_retrieve, rel_retrieve_params, ent_retrieve_params,
               tensor_dict_map,
-              model_params_generator,
-              base_dir='.', no_save=False):
+              model_params_generator):
     parser = get_basic_parser()
     extra_parser_args_adder(parser)
 
@@ -231,6 +241,7 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
     dropout = args.dropout
     tokenizer = args.tokenizer
     word_embd_path = args.word_embd_path
+    entity_augment = args.entity_augment
 
     batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size
@@ -250,6 +261,7 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
     model_path = args.model_path
     eval_file_path = args.eval_file_path
     base_dir = args.base_dir
+    no_save = args.no_save
 
     if not no_gpu_conf:
         config = get_gpu_config(visible_device_list=visible_device_list,
@@ -259,11 +271,12 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
         config = None
 
     path = './data'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}'.format(emb_dim,
-                                                                            l2,
-                                                                            dropout,
-                                                                            paths_selection,
-                                                                            tokenizer)
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_masked={}_entity={}'.format(emb_dim,
+                                                                                                l2,
+                                                                                                dropout,
+                                                                                                paths_selection,
+                                                                                                tokenizer, masked,
+                                                                                                entity_augment)
     extra_run_id_params = extra_args_formatter(args)
     run_id_params = run_id_params + '_' + extra_run_id_params
 
@@ -290,7 +303,8 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
 
     word2vec_embeddings = get_word2vec(word_embd_path=word_embd_path,
                                        name='token_emb',
-                                       masked=masked)
+                                       masked=masked,
+                                       entity_augment=entity_augment)
     target_embeddings = get_target_embd(train['relation'],
                                         name='target_rel_embd',
                                         embd_dim=emb_dim)
