@@ -271,12 +271,15 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
         config = None
 
     path = './data'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_masked={}_entity={}'.format(emb_dim,
-                                                                                                l2,
-                                                                                                dropout,
-                                                                                                paths_selection,
-                                                                                                tokenizer, masked,
-                                                                                                entity_augment)
+    word_embd_param = 'medline' if 'medline' in word_embd_path else 'medhop'
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_masked={}_entity={}_embd={}'.format(emb_dim,
+                                                                                                        l2,
+                                                                                                        dropout,
+                                                                                                        paths_selection,
+                                                                                                        tokenizer,
+                                                                                                        masked,
+                                                                                                        entity_augment,
+                                                                                                        word_embd_param)
     extra_run_id_params = extra_args_formatter(args)
     run_id_params = run_id_params + '_' + extra_run_id_params
 
