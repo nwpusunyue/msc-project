@@ -5,6 +5,7 @@ from path_rnn_v2.experiments.experiment_base import run_model
 
 np.random.seed(0)
 
+
 def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embeddings, target_embeddings, emb_dim,
                            dropout, args):
     return {
@@ -61,14 +62,14 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 if __name__ == '__main__':
     visible_device_list = '0'
     visible_devices = '1'
-    memory_fraction = 0.5
+    memory_fraction = 1.0
 
     model_name = 'attention_truncated_relation'
     extra_parser_args_adder = lambda parser: parser
     extra_args_formatter = lambda args: ''
     max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: 1
     max_rel_len_retrieve = lambda train_doc_store, dev_doc_store, args: max(train_doc_store.max_tokens,
-                                                                      dev_doc_store.max_tokens)
+                                                                            dev_doc_store.max_tokens)
     rel_retrieve_params = {
         'replacement': (ENT_1, ENT_2),
         'truncate': True
@@ -83,4 +84,4 @@ if __name__ == '__main__':
 
     run_model(visible_device_list, visible_devices, memory_fraction, model_name, extra_parser_args_adder,
               extra_args_formatter, max_ent_len_retrieve, max_rel_len_retrieve, rel_retrieve_params,
-              ent_retrieve_params, tensor_dict_map, model_params_generator, no_save=True)
+              ent_retrieve_params, tensor_dict_map, model_params_generator)

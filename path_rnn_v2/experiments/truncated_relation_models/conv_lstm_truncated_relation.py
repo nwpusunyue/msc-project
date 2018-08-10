@@ -98,4 +98,4 @@ if __name__ == '__main__':
               extra_args_formatter=extra_args_formatter, max_ent_len_retrieve=max_ent_len_retrieve,
               max_rel_len_retrieve=max_rel_len_retrieve, rel_retrieve_params=rel_retrieve_params,
               ent_retrieve_params=ent_retrieve_params, tensor_dict_map=tensor_dict_map,
-              model_params_generator=model_params_generator, no_save=True)
+              model_params_generator=model_params_generator)

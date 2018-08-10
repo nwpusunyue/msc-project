@@ -1,6 +1,5 @@
 import numpy as np
 
-from parsing.special_tokens import *
 from path_rnn_v2.experiments.experiment_base import run_model
 
 np.random.seed(0)
@@ -61,18 +60,18 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
-    memory_fraction = 0.5
+    visible_devices = '0'
+    memory_fraction = 1.0
 
-    model_name = 'attention_sentence_relation'
+    model_name = 'attention_truncated_relation_unmasked'
     extra_parser_args_adder = lambda parser: parser
     extra_args_formatter = lambda args: ''
     max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: 1
     max_rel_len_retrieve = lambda train_doc_store, dev_doc_store, args: max(train_doc_store.max_tokens,
                                                                             dev_doc_store.max_tokens)
     rel_retrieve_params = {
-        'replacement': (ENT_1, ENT_2),
-        'sentence_truncate': True
+        'replacement': None,
+        'truncate': True
     }
     ent_retrieve_params = {}
 

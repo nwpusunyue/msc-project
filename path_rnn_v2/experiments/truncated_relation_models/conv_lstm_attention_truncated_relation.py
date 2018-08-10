@@ -22,14 +22,18 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
             'reuse': False
         },
         'relation_encoder_params': {
-            'module': 'additive_attention',
-            'name': 'attention_lstm_encoder',
+            'module': 'conv_lstm',
+            'name': 'relation_conv_lstm_encoder',
             'repr_dim': emb_dim,
             'activation': None,
             'dropout': None,
             'extra_args': {
-                'with_backward': True,
-                'with_projection': False
+                'conv_activation': 'relu',
+                'conv_out_channels': args.conv_out_channels,
+                'conv_width': args.conv_width,
+                'lstm_with_projection': False,
+                'lstm_with_backward': True,
+                'lstm_last_output': True
             }
         },
         'target_embedder': target_embeddings,
@@ -59,29 +63,39 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
     }
 
 
+def extra_parser_args_adder(parser):
+    parser.add_argument('--conv_width',
+                        type=int,
+                        default=5,
+                        help='Width of the convolutional filters')
+    parser.add_argument('--conv_out_channels',
+                        type=int,
+                        default=100,
+                        help='Number of channels after apply the conv op')
+
+
 if __name__ == '__main__':
     visible_device_list = '0'
     visible_devices = '1'
-    memory_fraction = 0.5
+    memory_fraction = 1.0
 
-    model_name = 'attention_sentence_relation'
-    extra_parser_args_adder = lambda parser: parser
-    extra_args_formatter = lambda args: ''
+    model_name = 'conv_lstm_attention_truncated_relation'
+    extra_args_formatter = lambda args: 'conv_width={}_conv_channels={}'.format(args.conv_width, args.conv_out_channels)
     max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: 1
     max_rel_len_retrieve = lambda train_doc_store, dev_doc_store, args: max(train_doc_store.max_tokens,
                                                                             dev_doc_store.max_tokens)
     rel_retrieve_params = {
         'replacement': (ENT_1, ENT_2),
-        'sentence_truncate': True
+        'truncate': True
     }
     ent_retrieve_params = {}
-
-    tensor_dict_map = {
-        'rel_seq': 'rel_seq',
-        'seq_len': 'seq_len',
-        'rel_len': 'rel_len',
-        'target_rel': 'target_rel'}
-
-    run_model(visible_device_list, visible_devices, memory_fraction, model_name, extra_parser_args_adder,
-              extra_args_formatter, max_ent_len_retrieve, max_rel_len_retrieve, rel_retrieve_params,
-              ent_retrieve_params, tensor_dict_map, model_params_generator)
+    tensor_dict_map = {'rel_seq': 'rel_seq',
+                       'seq_len': 'seq_len',
+                       'rel_len': 'rel_len',
+                       'target_rel': 'target_rel'}
+    run_model(visible_device_list=visible_device_list, visible_devices=visible_devices,
+              memory_fraction=memory_fraction, model_name=model_name, extra_parser_args_adder=extra_parser_args_adder,
+              extra_args_formatter=extra_args_formatter, max_ent_len_retrieve=max_ent_len_retrieve,
+              max_rel_len_retrieve=max_rel_len_retrieve, rel_retrieve_params=rel_retrieve_params,
+              ent_retrieve_params=ent_retrieve_params, tensor_dict_map=tensor_dict_map,
+              model_params_generator=model_params_generator)

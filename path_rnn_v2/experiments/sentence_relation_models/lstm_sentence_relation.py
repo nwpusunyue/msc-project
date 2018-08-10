@@ -61,7 +61,7 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
+    visible_devices = '0'
     memory_fraction = 0.5
 
     model_name = 'lstm_sentence_relation'
@@ -72,7 +72,7 @@ if __name__ == '__main__':
                                                                             dev_doc_store.max_tokens)
     rel_retrieve_params = {
         'replacement': (ENT_1, ENT_2),
-        'truncate': True
+        'setence_truncate': True
     }
     ent_retrieve_params = {}
 
@@ -84,4 +84,4 @@ if __name__ == '__main__':
 
     run_model(visible_device_list, visible_devices, memory_fraction, model_name, extra_parser_args_adder,
               extra_args_formatter, max_ent_len_retrieve, max_rel_len_retrieve, rel_retrieve_params,
-              ent_retrieve_params, tensor_dict_map, model_params_generator, no_save=True)
+              ent_retrieve_params, tensor_dict_map, model_params_generator)
