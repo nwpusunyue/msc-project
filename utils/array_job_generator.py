@@ -19,29 +19,37 @@ def summary(configuration):
 def to_cmd(c):
     path = '/home/scimpian/msc-project'
     command = 'PYTHONPATH=. anaconda-python3-gpu -u ' \
-              '{}/path_rnn_v2/experiments/textual_chains_of_reasoning_eval.py ' \
+              '{}/path_rnn_v2/experiments/truncated_relation_neighb_models/{}.py ' \
+              '--no_gpu_conf ' \
               '--emb_dim={} ' \
               '--l2={} ' \
-              '--dropout={}'.format(path, c['emb_dim'], c['l2'], c['dropout'])
+              '--dropout={} ' \
+              '--neighb_dim={} ' \
+              '--tokenizer=genia ' \
+              '--word_embd_path=./medline_word2vec'.format(path, c['model'], c['emb_dim'], c['l2'], c['dropout'],
+                                                           c['neighb_dim'])
 
     return command
 
 
 def to_logfile(c, path):
-    outfile = '{}/textual_chains_of_reasoning_medhop.{}.log'.format(path, summary(c))
+    outfile = '{}/{}.log'.format(path, summary(c))
     return outfile
 
 
 def main(_):
     hyperparameters_space = dict(
-        emb_dim=[100, 200, 300],
-        l2=[0.0, 0.001],
-        dropout=[0.0, 0.1]
+        model=['baseline_truncated_relation_neighb', 'lstm_truncated_relation_neighb',
+               'attention_truncated_relation_neighb'],
+        emb_dim=[50, 100, 150],
+        l2=[0.0, 0.0001],
+        dropout=[0.0, 0.1, 0.3, 0.5],
+        neighb_dim=[2, 3, 4]
     )
 
     configurations = cartesian_product(hyperparameters_space)
 
-    path = '/home/scimpian/msc-project/qsub_logs'
+    path = '/cluster/project2/mr/scimpian/qsub_logs_neighb'
 
     # Check that we are on the UCLCS cluster first
     if os.path.exists('/home/scimpian/'):
@@ -69,8 +77,8 @@ def main(_):
 #$ -o /dev/null
 #$ -e /dev/null
 #$ -t 1-{}
-#$ -l tmem=2G
-#$ -l h_rt=1:00:00
+#$ -l tmem=16G
+#$ -l h_rt=24:00:00
 #$ -P gpu
 #$ -l gpu=1
 

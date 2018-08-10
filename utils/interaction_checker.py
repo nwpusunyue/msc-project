@@ -1,11 +1,7 @@
-import pickle
 import re
 import requests
-import time
 
 import pandas as pd
-
-from tqdm import tqdm
 
 drug_target_regex = re.compile('(?:.|\n)*<td>Target uniprot</td><td>((.|\n)+)</td>(?:.|\n)*')
 drug_drug_regex = re.compile('(?:.|\n)*([0-9]+) (?:interaction|interactions) with(?:.|\n)*')
@@ -17,6 +13,38 @@ def _read_entity2type(entity2type_path):
         content = f.readlines()
     entity2type = {l.split(' ')[0].strip(): l.split(' ')[1].strip() for l in content}
     return entity2type
+
+
+def _read_protein_interactions(protein_inter_file_path):
+    with open(protein_inter_file_path, 'r') as f:
+        lines = f.readlines()
+        lines = [line.strip().split('\t') for line in lines]
+        inter = {}
+        for prot in lines:
+            if prot[0] not in inter:
+                inter[prot[0]] = [prot[1]]
+            else:
+                inter[prot[0]].append(prot[1])
+
+            if prot[1] not in inter:
+                inter[prot[1]] = [prot[0]]
+            else:
+                inter[prot[1]].append(prot[0])
+    return inter
+
+
+def _read_drugbank_interactions(drugbank_file_path):
+    with open(drugbank_file_path, 'r') as f:
+        lines = f.readlines()
+        lines = [line.strip().split() for line in lines]
+        inter = {}
+        for ent in lines:
+            source = ent[0]
+            if source not in inter:
+                inter[source] = []
+            for e in ent[1:]:
+                inter[source].append(e)
+    return inter
 
 
 def protein_protein_interaction(protein_1, protein_2):
@@ -68,34 +96,27 @@ def entity_entity_interaction(ent_1, ent_2, entity2type):
     return interaction
 
 
-def chain_interaction(ent_chain, entity2type):
-    try:
-        interaction = []
-        for ent_1, ent_2 in zip(ent_chain[:-1], ent_chain[1:]):
-            interaction.append(int(entity_entity_interaction(ent_1, ent_2, entity2type)))
-        time.sleep(1)
-        return interaction
-    except Exception:
-        return [-1]
+def chain_interaction(ent_chain, inter):
+    interaction = []
+    for ent_1, ent_2 in zip(ent_chain[:-1], ent_chain[1:]):
+        if ent_1 in inter and ent_2 in inter[ent_1]:
+            interaction.append(1)
+        elif ent_2 in inter and ent_1 in inter[ent_2]:
+            interaction.append(1)
+        else:
+            if ent_1 not in inter and ent_2 not in inter:
+                print(ent_1, ent_2)
+            interaction.append(0)
+    return interaction
 
 
 if __name__ == '__main__':
-    print(drug_protein_interaction('DB00072', 'P11511'))
-    print(drug_protein_interaction('DB00072', 'Meh'))
-    print(drug_protein_interaction('Meh', 'Meh'))
+    df = pd.read_json('./data/sentwise=F_cutoff=4_limit=500_method=all_tokenizer=punkt_medhop_train.json')
+    inter_prot = _read_protein_interactions('./utils/reactome_2017-01-18_homo_sapiens_interactions.tsv')
+    inter_drugbank = _read_drugbank_interactions('./utils/drugbank.tsv')
 
-    print(drug_drug_interaction('DB00333', 'DB00082'))
+    inter = dict(inter_prot)
+    inter.update(inter_drugbank)
 
-    print(protein_protein_interaction('P00520', 'Q99M51'))
-    print(protein_protein_interaction('A', 'B'))
-
-    entity2type = _read_entity2type('./parsing/entity_map.txt')
-    print(chain_interaction(['DB08879', 'Q9Y275', 'P16410', 'DB06186'], entity2type))
-
-    df = pd.read_json('.//data/sentwise=F_cutoff=4_limit=100_method=shortest_tokenizer=genia_medhop_train.json')
-    i = []
-    pickle.dump(i, open('train_interactions', 'wb'))
-    for index, row in tqdm(df.iterrows()):
-        interactions = [chain_interaction(ch, entity2type) for ch in row['entity_paths']]
-        i.append(interactions)
-    pickle.dump(i, open('train_interactions', 'wb'))
+    df['interactions'] = df.apply(lambda row: [chain_interaction(ch, inter) for ch in row['entity_paths']], axis=1)
+    df.to_json('train_interactions_500')
