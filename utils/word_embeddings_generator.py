@@ -7,10 +7,12 @@ from gensim.models import Word2Vec
 from itertools import chain
 from nltk.tokenize import sent_tokenize
 from nltk.tokenize import TreebankWordTokenizer, WordPunctTokenizer
+from parsing.genia.word_tokenize import GTBTokenizer
 
 tokenizer = {
     'punkt': WordPunctTokenizer(),
-    'treebank': TreebankWordTokenizer()
+    'treebank': TreebankWordTokenizer(),
+    'genia': GTBTokenizer()
 }
 
 # Instantiate the parser

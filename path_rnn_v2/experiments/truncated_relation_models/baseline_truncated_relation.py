@@ -60,8 +60,8 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
-    memory_fraction = 0.5
+    visible_devices = '0'
+    memory_fraction = 1.0
 
     model_name = 'baseline_truncated_relation'
     extra_parser_args_adder = lambda parser: parser
@@ -83,4 +83,4 @@ if __name__ == '__main__':
               extra_args_formatter=extra_args_formatter, max_ent_len_retrieve=max_ent_len_retrieve,
               max_rel_len_retrieve=max_rel_len_retrieve, rel_retrieve_params=rel_retrieve_params,
               ent_retrieve_params=ent_retrieve_params, tensor_dict_map=tensor_dict_map,
-              model_params_generator=model_params_generator, no_save=True)
+              model_params_generator=model_params_generator)

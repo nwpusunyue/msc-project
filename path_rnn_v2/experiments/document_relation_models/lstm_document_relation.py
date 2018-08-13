@@ -22,8 +22,8 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
             'reuse': False
         },
         'relation_encoder_params': {
-            'module': 'additive_attention',
-            'name': 'attention_lstm_encoder',
+            'module': 'lstm',
+            'name': 'lstm_encoder',
             'repr_dim': emb_dim,
             'activation': None,
             'dropout': None,
@@ -61,10 +61,10 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
+    visible_devices = '0'
     memory_fraction = 0.5
 
-    model_name = 'attention_sentence_relation'
+    model_name = 'lstm_document_relation'
     extra_parser_args_adder = lambda parser: parser
     extra_args_formatter = lambda args: ''
     max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: 1
@@ -72,7 +72,7 @@ if __name__ == '__main__':
                                                                             dev_doc_store.max_tokens)
     rel_retrieve_params = {
         'replacement': (ENT_1, ENT_2),
-        'sentence_truncate': True
+        'truncate': False
     }
     ent_retrieve_params = {}
 

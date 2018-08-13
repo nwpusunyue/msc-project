@@ -46,6 +46,28 @@ def add_special_tokens(vocab, embedding_matrix, special_tokens, seed=None):
     return vocab, np.append(embedding_matrix, random_embeddings, axis=0)
 
 
+class EntityTypeAugmenter:
+
+    def __init__(self, entity2type_path):
+        self.entity2type = self._read_entity2type(entity2type_path)
+
+    def __call__(self, vocab, embedding_matrix):
+        type = np.zeros([len(vocab), 2])
+        for word, idx in vocab.items():
+            if word in self.entity2type:
+                if self.entity2type[word] == 'protein':
+                    type[idx] = [0, 1]
+                else:
+                    type[idx] = [1, 0]
+        return np.concatenate([embedding_matrix, type], axis=1)
+
+    def _read_entity2type(self, entity2type_path):
+        with open(entity2type_path, 'r') as f:
+            content = f.readlines()
+        entity2type = {l.split(' ')[0].strip(): l.split(' ')[1].strip() for l in content}
+        return entity2type
+
+
 class Embeddings(ABC):
 
     @abstractmethod
@@ -136,6 +158,14 @@ class Word2VecEmbeddings(Embeddings):
                                                    self.trainable, self.unk_token, self.special_tokens))
 
 
+class AugmentedWord2VecEmbeddings(Word2VecEmbeddings):
+
+    def __init__(self, word2vec_path, name, unk_token, trainable=False, special_tokens=None, augmenter=None):
+        super(AugmentedWord2VecEmbeddings, self).__init__(word2vec_path, name, unk_token, trainable, special_tokens)
+        if augmenter is not None:
+            self.embedding_matrix = augmenter(self.vocab, self.embedding_matrix)
+
+
 class RandomEmbeddings(Embeddings):
 
     def __init__(self, tokens, embedding_size, name, unk_token, initializer):
@@ -204,7 +234,17 @@ if __name__ == '__main__':
                               unk_token=UNK,
                               trainable=False,
                               special_tokens=[(UNK, False), (PAD, True)])
+
+    augmented_embd = AugmentedWord2VecEmbeddings('medhop_word2vec_punkt',
+                                                 name='token_aug_embd',
+                                                 unk_token=UNK,
+                                                 trainable=False,
+                                                 special_tokens=[(UNK, False), (PAD, True)],
+                                                 augmenter=EntityTypeAugmenter(
+                                                     '/home/scimpian/msc-project/parsing/entity_map.txt'))
+
     print(embd.config_str)
+    print(augmented_embd.config_str)
     batch_size = 2
     seq_len = 3
     test_seq = np.zeros([batch_size, seq_len])
@@ -223,6 +263,11 @@ if __name__ == '__main__':
                                              projection_activation=activation)
     seq_embd_projected_resize = embd.embed_sequence(seq, name='test_embd_proj_resize', with_projection=True,
                                                     projection_activation=activation, projection_dim=projection_dim)
+
+    assert augmented_embd.embedding_matrix.shape[1] == 102
+    assert (augmented_embd.embedding_matrix[augmented_embd.get_idx('P01375'), -2:] == [0.0, 1.0]).all()
+    assert (augmented_embd.embedding_matrix[augmented_embd.get_idx('DB00741'), -2:] == [1.0, 0.0]).all()
+
 
     for op in tf.get_default_graph().get_operations():
         print(str(op.name))

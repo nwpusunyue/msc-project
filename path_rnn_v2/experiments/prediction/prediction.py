@@ -19,6 +19,7 @@ def generate_prediction(model, model_path, test,
 
     with tf.Session(config=config) as sess:
         sess.run(tf.local_variables_initializer())
+        sess.run(tf.global_variables_initializer())
         model.load(sess, path=model_path)
 
         test_prob = np.array([])
