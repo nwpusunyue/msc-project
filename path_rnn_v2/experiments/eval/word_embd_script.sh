@@ -33,7 +33,7 @@ else
     neighb_regex="neighb_dim=([0-9]+)_"
     masked_regex="masked=(True|False)"
     paths_regex="paths=(all|shortest)_"
-    embd_regex="embd=(medline|medhop|random)_"
+    embd_regex="embd=(medline|medhop)_"
     src_target_regex="srctarget=(True|False)_"
 
 
@@ -80,12 +80,7 @@ else
             then
                 word_embd="${BASH_REMATCH[1]}"
             else
-                if [ "${tokenizer}" = "genia" ];
-                then
-                 word_embd="medline"
-                else
-                  word_embd="medhop"
-                fi
+                word_embd="medhop"
             fi
 
             if [ "$paths" = "all" ];
@@ -100,11 +95,8 @@ else
             if [ "$word_embd" = "medhop" ];
             then
                 word_embd_path="medhop_word2vec_punkt_v2"
-            elif [ "$word_embd" = "medline" ];
-            then
-                word_embd_path="medline_word2vec"
             else
-                word_embd_path="random"
+                word_embd_path="medline_word2vec"
             fi
 
             if [[ ${rest} =~ $src_target_regex ]]
@@ -120,13 +112,13 @@ else
                         --emb_dim=${dim} \
                         --l2=${l2} \
                         --tokenizer=${tokenizer} \
-                        --testing \
+                        --encode_word2vec \
                         --word_embd_path=${word_embd_path} \
-                        --model_path=\"${entry}/model\" \
-                        --eval_file_path=${eval_file_path} \
+                        --model_path=\"${entry}/model\"
                         --eval_batch_size=${eval_batch_size} \
                         --limit=${limit} \
-                        --paths_selection=${paths}"
+                        --paths_selection=${paths} \
+                        --encoded_word2vec_path=${eval_file_path}/${subdir}_emb_dim=${dim}_l2=${l2}_tok=${tokenizer}_embd=${word_embd}_lim=${limit}_paths=${paths}_masked=${masked}_srctarget=${src_target}"
 
             if [ "$neighb_dim" != "none" ];
             then
