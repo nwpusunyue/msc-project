@@ -8,7 +8,7 @@ import pandas as pd
 import tensorflow as tf
 
 from parsing.special_tokens import *
-from path_rnn_v2.experiments.eval.evaluation import evaluate_model
+from path_rnn_v2.experiments.eval.evaluation import evaluate_model, encode_word_embd
 from path_rnn_v2.experiments.prediction.prediction import generate_prediction
 from path_rnn_v2.experiments.training import train_model
 from path_rnn_v2.nn.textual_chains_of_reasoning_model import TextualChainsOfReasoningModel
@@ -106,12 +106,26 @@ def get_basic_parser():
     parser.add_argument('--eval_file_path',
                         default=None,
                         help='File to append evaluation results to')
+    parser.add_argument('--train_pred_file_path',
+                        default=None,
+                        help='Path to store the train predictions if testing')
+    parser.add_argument('--dev_pred_file_path',
+                        default=None,
+                        help='Path to store the dev predictions if testing')
+    parser.add_argument('--test_pred_file_path',
+                        default=None,
+                        help='Path to store the test predictions if testing')
     parser.add_argument('--base_dir',
                         default='.',
                         help='Base directory for saving the model and the logs.')
     parser.add_argument('--no_save',
                         action='store_true',
                         help='If set no data will be saved.')
+    parser.add_argument('--encode_word2vec',
+                        action='store_true',
+                        help='If set, perform word2vec encoding')
+    parser.add_argument('--encoded_word2vec_path',
+                        default='./')
     return parser
 
 
@@ -217,6 +231,27 @@ def get_word2vec(word_embd_path, name, masked, entity_augment):
                                        augmenter=augmenter)
 
 
+def get_random(name, embd_dim, testing=False):
+    with open('./parsing/drugs.txt', 'r') as f:
+        drugs = f.readlines()
+        drugs = [d.strip() for d in drugs]
+
+    if not testing:
+        return RandomEmbeddings(drugs + [UNK, END],
+                                name=name,
+                                embedding_size=embd_dim,
+                                initializer=tf.truncated_normal_initializer(mean=0.0,
+                                                                            stddev=1.0,
+                                                                            dtype=tf.float64),
+                                unk_token=UNK)
+    else:
+        return RandomEmbeddings(drugs + [UNK, END],
+                                name=name,
+                                embedding_size=embd_dim,
+                                initializer=None,
+                                unk_token=UNK)
+
+
 def get_target_embd(relations, name, embd_dim):
     return RandomEmbeddings(relations,
                             name=name,
@@ -260,8 +295,13 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
     no_gpu_conf = args.no_gpu_conf
     model_path = args.model_path
     eval_file_path = args.eval_file_path
+    train_pred_file_path = args.train_pred_file_path
+    dev_pred_file_path = args.dev_pred_file_path
+    test_pred_file_path = args.test_pred_file_path
     base_dir = args.base_dir
     no_save = args.no_save
+    encode_word2vec = args.encode_word2vec
+    encoded_word2vec_path = args.encoded_word2vec_path
 
     if not no_gpu_conf:
         config = get_gpu_config(visible_device_list=visible_device_list,
@@ -271,15 +311,18 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
         config = None
 
     path = './data'
-    word_embd_param = 'medline' if 'medline' in word_embd_path else 'medhop'
-    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_masked={}_entity={}_embd={}'.format(emb_dim,
-                                                                                                        l2,
-                                                                                                        dropout,
-                                                                                                        paths_selection,
-                                                                                                        tokenizer,
-                                                                                                        masked,
-                                                                                                        entity_augment,
-                                                                                                        word_embd_param)
+    word_embd_param = 'medline' if 'medline' in word_embd_path else (
+        'medhop' if 'medhop' in word_embd_path else 'random')
+    run_id_params = 'emb_dim={}_l2={}_drop={}_paths={}_tokenizer={}_masked={}_entity={}_embd={}_srctarget={}'.format(
+        emb_dim,
+        l2,
+        dropout,
+        paths_selection,
+        tokenizer,
+        masked,
+        entity_augment,
+        word_embd_param,
+        source_target_only)
     extra_run_id_params = extra_args_formatter(args)
     run_id_params = run_id_params + '_' + extra_run_id_params
 
@@ -299,18 +342,23 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
                                                                    tokenizer=tokenizer, masked=masked,
                                                                    type='test_no_label',
                                                                    source_target_only=source_target_only)
+    if word_embd_path != 'random':
+        word2vec_embeddings = get_word2vec(word_embd_path=word_embd_path,
+                                           name='token_emb',
+                                           masked=masked,
+                                           entity_augment=entity_augment)
+    else:
+        word2vec_embeddings = get_random(name='token_emb',
+                                         embd_dim=emb_dim,
+                                         testing=testing)
+
+    target_embeddings = get_target_embd(train['relation'],
+                                        name='target_rel_emb',
+                                        embd_dim=emb_dim)
 
     max_path_len = 5 if not source_target_only else 2
     max_ent_len = max_ent_len_retrieve(train_document_store, dev_document_store, args)
     max_rel_len = max_rel_len_retrieve(train_document_store, dev_document_store, args)
-
-    word2vec_embeddings = get_word2vec(word_embd_path=word_embd_path,
-                                       name='token_emb',
-                                       masked=masked,
-                                       entity_augment=entity_augment)
-    target_embeddings = get_target_embd(train['relation'],
-                                        name='target_rel_embd',
-                                        embd_dim=emb_dim)
 
     if type(ent_retrieve_params) is not dict:
         ent_retrieve_params = ent_retrieve_params(args)
@@ -356,17 +404,25 @@ def run_model(visible_device_list, visible_devices, memory_fraction,
     print(model.params_str)
     print(pprint.pformat(model.train_variables))
 
-    if not testing and not predicting:
+    if not testing and not predicting and not encode_word2vec:
         train_model(model, train=train, train_batch_generator=train_batch_generator,
                     train_eval_batch_generator=train_eval_batch_generator,
                     dev=dev, dev_batch_generator=dev_batch_generator,
                     model_name=model_name, run_id_params=run_id_params,
                     num_epochs=num_epochs, check_period=check_period, config=config, base_dir=base_dir, no_save=no_save)
-    elif not predicting:
+    elif not predicting and not encode_word2vec:
         evaluate_model(model, model_path=model_path, train=train, train_eval_batch_generator=train_eval_batch_generator,
                        dev=dev, dev_batch_generator=dev_batch_generator,
                        test=test, test_batch_generator=test_batch_generator,
-                       eval_file_path=eval_file_path, word_embd=None)
-    else:
+                       eval_file_path=eval_file_path, word_embd=None, train_pred_file_path=train_pred_file_path,
+                       dev_pred_file_path=dev_pred_file_path, test_pred_file_path=test_pred_file_path)
+    elif not encode_word2vec:
         generate_prediction(model, model_path=model_path, test=test_no_label,
                             test_batch_generator=test_no_label_batch_generator, eval_file_path=eval_file_path)
+
+    else:
+        word_embd = word2vec_embeddings.embed_sequence(seq=None, name='node_embedder', max_norm=None,
+                                                       with_projection=True,
+                                                       projection_activation='tanh',
+                                                       projection_dim=None, reuse=True)
+        encode_word_embd(word_embd, encoded_word2vec_path, model, model_path, config)
