@@ -2,7 +2,6 @@ import numpy as np
 
 from parsing.special_tokens import *
 from path_rnn_v2.experiments.experiment_base import run_model
-from path_rnn_v2.experiments.truncated_relation_neighb_models.util import max_entity_mentions
 
 np.random.seed(0)
 
@@ -85,27 +84,19 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 if __name__ == '__main__':
     visible_device_list = '0'
     visible_devices = '1'
-    memory_fraction = 0.5
+    memory_fraction = 1.0
 
-    model_name = 'attention_truncated_relation_neighb'
-    extra_parser_args_adder = lambda parser: parser.add_argument('--neighb_dim',
-                                                                 type=int,
-                                                                 default=3,
-                                                                 help='Entity neighborhood dimension')
-    extra_args_formatter = lambda args: 'neighb_dim={}'.format(args.neighb_dim)
-
-    max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: ((2 * args.neighb_dim + 1)
-                                                                         * max(max_entity_mentions(train_doc_store),
-                                                                               max_entity_mentions(dev_doc_store)))
+    model_name = 'attention_truncated_relation_entity'
+    extra_parser_args_adder = lambda parser: parser
+    extra_args_formatter = lambda args: ''
+    max_ent_len_retrieve = lambda train_doc_store, dev_doc_store, args: 1
     max_rel_len_retrieve = lambda train_doc_store, dev_doc_store, args: 520
 
     rel_retrieve_params = {
         'replacement': (ENT_1, ENT_2),
         'truncate': True
     }
-    ent_retrieve_params = lambda args: {'neighb_size': args.neighb_dim,
-                                        'replacement': ENT_1,
-                                        'end_token': NEIGHB_END}
+    ent_retrieve_params = lambda args: {'neighb_size': 0}
 
     tensor_dict_map = {'rel_seq': 'rel_seq',
                        'ent_seq': 'ent_seq',

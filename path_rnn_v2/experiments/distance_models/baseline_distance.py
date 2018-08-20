@@ -59,7 +59,7 @@ if __name__ == '__main__':
     max_path_len = 4
     batch_size = 32
     path = './data'
-    num_epochs = 50
+    num_epochs = 25
 
     limit = 100
 
@@ -167,9 +167,9 @@ if __name__ == '__main__':
     start_time = time.strftime('%X_%d.%m.%y')
     run_id = 'run_{}_emb_dim={}_l2={}_drop={}_paths={}_balanced'.format(start_time, emb_dim, l2, dropout, method)
     print('Run id: {}'.format(run_id))
-    model_dir = './textual_chains_of_reasoning_models/distance_baseline/{}'.format(run_id)
-    log_dir = './textual_chains_of_reasoning_logs/distance_baseline/{}'.format(run_id)
-    acc_dir = './textual_chains_of_reasoning_logs/distance_baseline/acc_{}.txt'.format(run_id)
+    model_dir = './textual_chains_of_reasoning_models/baseline_distance/{}'.format(run_id)
+    log_dir = './textual_chains_of_reasoning_logs/baseline_distance/{}'.format(run_id)
+    acc_dir = './textual_chains_of_reasoning_logs/baseline_distance/acc_{}.txt'.format(run_id)
 
     # make save dir
     os.makedirs(model_dir)

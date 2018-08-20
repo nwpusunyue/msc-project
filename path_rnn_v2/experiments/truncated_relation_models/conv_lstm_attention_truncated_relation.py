@@ -22,7 +22,7 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
             'reuse': False
         },
         'relation_encoder_params': {
-            'module': 'conv_lstm',
+            'module': 'conv_lstm_additive_attention',
             'name': 'relation_conv_lstm_encoder',
             'repr_dim': emb_dim,
             'activation': None,
@@ -33,7 +33,6 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
                 'conv_width': args.conv_width,
                 'lstm_with_projection': False,
                 'lstm_with_backward': True,
-                'lstm_last_output': True
             }
         },
         'target_embedder': target_embeddings,
@@ -76,7 +75,7 @@ def extra_parser_args_adder(parser):
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
+    visible_devices = '0'
     memory_fraction = 1.0
 
     model_name = 'conv_lstm_attention_truncated_relation'

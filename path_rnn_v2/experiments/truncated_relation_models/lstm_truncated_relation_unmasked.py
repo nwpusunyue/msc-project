@@ -61,8 +61,8 @@ def model_params_generator(max_path_len, max_rel_len, max_ent_len, word2vec_embe
 
 if __name__ == '__main__':
     visible_device_list = '0'
-    visible_devices = '1'
-    memory_fraction = 0.5
+    visible_devices = '0'
+    memory_fraction = 1.0
 
     model_name = 'lstm_truncated_relation_unmasked'
     extra_parser_args_adder = lambda parser: parser

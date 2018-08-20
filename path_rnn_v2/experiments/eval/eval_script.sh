@@ -114,7 +114,7 @@ else
                 src_target="none"
             fi
 
-            echo "$dim: {dim} l2: ${l2} drop: ${drop} tok: ${tokenizer} embd: ${word_embd_path} neighb: ${neighb_dim} masked: ${masked} paths: ${paths} eval_size: ${eval_batch_size}"
+            echo "$dim: ${dim} l2: ${l2} drop: ${drop} tok: ${tokenizer} embd: ${word_embd_path} neighb: ${neighb_dim} masked: ${masked} paths: ${paths} eval_size: ${eval_batch_size}"
 
             cmd="PYTHONPATH=./ python -u ./path_rnn_v2/experiments/${basedir}/${subdir}.py \
                         --emb_dim=${dim} \

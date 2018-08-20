@@ -48,63 +48,71 @@ else
 
             rest="${BASH_REMATCH[4]}"
 
-            if [[ ${rest} =~ $tokenizer_regex ]]
-            then
+           if [[ ${rest} =~ $tokenizer_regex ]]
+           then
                 tokenizer="${BASH_REMATCH[1]}"
-            else
+           else
                 tokenizer=punkt
-            fi
+           fi
 
-            if [[ ${rest} =~ $neighb_regex ]]
-            then
+           if [[ ${rest} =~ $neighb_regex ]]
+           then
                 neighb_dim=${BASH_REMATCH[1]}
-            else
+           else
                 neighb_dim="none"
-            fi
+           fi
 
-            if [[ ${rest} =~ $masked_regex ]]
-            then
+           if [[ ${rest} =~ $masked_regex ]]
+           then
                 masked="${BASH_REMATCH[1]}"
-            else
+           else
                 masked="none"
-            fi
+           fi
 
-            if [[ ${rest} =~ $paths_regex ]]
-            then
+           if [[ ${rest} =~ $paths_regex ]]
+           then
                 paths="${BASH_REMATCH[1]}"
-            else
+           else
                 paths="shortest"
-            fi
+           fi
 
-            if [[ ${rest} =~ $embd_regex ]];
-            then
+           if [[ ${rest} =~ $embd_regex ]];
+           then
                 word_embd="${BASH_REMATCH[1]}"
-            else
-                word_embd="medhop"
-            fi
+           else
+                if [ "${tokenizer}" = "genia" ];
+                then
+                 word_embd="medline"
+                else
+                  word_embd="medhop"
+                fi
+           fi
 
-            if [ "$paths" = "all" ];
-            then
+           if [ "$paths" = "all" ];
+           then
                 eval_batch_size=2
                 limit=500
-            else
+           else
                 eval_batch_size=40
                 limit=100
-            fi
+           fi
 
-            if [ "$word_embd" = "medhop" ];
-            then
+           if [ "$word_embd" = "medhop" ];
+           then
                 word_embd_path="medhop_word2vec_punkt_v2"
-            else
+           elif [ "$word_embd" = "medline" ];
+           then
                 word_embd_path="medline_word2vec"
-            fi
+           else
+                word_embd_path="random"
+           fi
 
-            if [[ ${rest} =~ $src_target_regex ]]
-            then
+           if [[ ${rest} =~ $src_target_regex ]]
+           then
                 src_target="${BASH_REMATCH[1]}"
-            else
+           else
                 src_target="none"
-            fi
+           fi
 
             echo "$dim: {dim} l2: ${l2} drop: ${drop} tok: ${tokenizer} embd: ${word_embd_path} neighb: ${neighb_dim} masked: ${masked} paths: ${paths} eval_size: ${eval_batch_size}"
 
