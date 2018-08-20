@@ -47,14 +47,14 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
             out = tf.layers.dense(tf.reshape(sequence, shape=[-1, sequence.get_shape()[1] * sequence.get_shape()[2]]),
                                   repr_dim)
         elif module == 'conv':
-            # pbatch_size, repr_dim x 2]
+            # [batch_size, repr_dim x 2]
             out = conv_net(repr_dim, sequence, num_layers=1, activation=activation_from_string(activation),
                            **extra_args)
         elif module == 'conv_lstm':
             out = conv_lstm(repr_dim, sequence, seq_length, **extra_args)
         elif module == 'conv_lstm_additive_attention':
             # [batch_size, max_seq_len, repr_dim x 2]
-            out = conv_lstm(repr_dim, sequence, seq_length, **extra_args)
+            out = conv_lstm(repr_dim, sequence, seq_length, lstm_last_output=False, **extra_args)
             # [batch_size, repr_dim]
             out, _ = attend_sequence(out, seq_length, module='additive')
         elif module == 'average':
