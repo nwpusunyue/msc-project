@@ -59,17 +59,20 @@ class TextualChainsOfReasoningModel(BaseModel):
 
         # encode rel seq and ent seq
         # [batch_size, max_path_len, rel_repr_dim]
-        rel_seq_enc = encode_path_elem(self.rel_seq, self.rel_len, self.rel_embedder, self.rel_embedder_params,
-                                       self.rel_encoder_params, is_eval=self.is_eval,
-                                       name=self.rel_encoder_name)
+        rel_seq_enc, rel_attn = encode_path_elem(self.rel_seq, self.rel_len, self.rel_embedder,
+                                                 self.rel_embedder_params,
+                                                 self.rel_encoder_params, is_eval=self.is_eval,
+                                                 name=self.rel_encoder_name)
 
         if not self.rel_only:
             # [batch_size, max_path_len, ent_repr_dim]
-            ent_seq_enc = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder, self.ent_embedder_params,
-                                           self.ent_encoder_params, is_eval=self.is_eval,
-                                           name=self.ent_encoder_name)
+            ent_seq_enc, ent_attn = encode_path_elem(self.ent_seq, self.ent_len, self.ent_embedder,
+                                                     self.ent_embedder_params,
+                                                     self.ent_encoder_params, is_eval=self.is_eval,
+                                                     name=self.ent_encoder_name)
         else:
             ent_seq_enc = None
+            ent_attn = None
 
         # [batch_size, target_rel_repr_dim]
         target_rel_enc = self.target_rel_embedder.embed_sequence(self.target_rel,
@@ -100,10 +103,13 @@ class TextualChainsOfReasoningModel(BaseModel):
                                                         logits=score))
         else:
             loss = rank_loss(y_true=self.label, y_pred=prob, margin=self.margin)
-            #loss = tf.losses.hinge_loss(labels=self.label, logits=score)
 
         self._tensors['loss'] = loss
         self._tensors['prob'] = prob
+        if rel_attn is not None:
+            self._tensors['rel_attn'] = rel_attn
+        if ent_attn is not None:
+            self._tensors['ent_attn'] = ent_attn
         self._training_variables = tf.trainable_variables()
 
     def _setup_evaluation(self):
@@ -258,6 +264,11 @@ class TextualChainsOfReasoningModel(BaseModel):
     def predict_step(self, batch, sess):
         batch['is_eval'] = True
         return sess.run(self.tensors['prob'],
+                        feed_dict=self.convert_to_feed_dict(batch))
+
+    def attention_step(self, batch, sess):
+        batch['is_eval'] = True
+        return sess.run(self.tensors['rel_attn'],
                         feed_dict=self.convert_to_feed_dict(batch))
 
 

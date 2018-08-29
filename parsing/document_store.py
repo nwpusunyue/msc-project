@@ -93,7 +93,7 @@ class DocumentStore:
         if neighb_size == 0:
             if ent in self.document_entities[idx]:
                 return [ent if replacement is None else replacement]
-            else :
+            else:
                 raise KeyError(ent)
 
         doc = self.documents[idx]

@@ -84,3 +84,6 @@ def encode_word_embd(word_embd, encoded_word_embd_path, model, model_path, confi
         if word_embd is not None:
             word_embd_vals = sess.run(word_embd)
             np.save(encoded_word_embd_path, word_embd_vals)
+
+
+#def run_attention(model_path, config)

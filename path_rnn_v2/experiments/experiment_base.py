@@ -265,8 +265,7 @@ def get_target_embd(relations, name, embd_dim):
 def run_model(visible_device_list, visible_devices, memory_fraction,
               model_name, extra_parser_args_adder, extra_args_formatter,
               max_ent_len_retrieve, max_rel_len_retrieve, rel_retrieve_params, ent_retrieve_params,
-              tensor_dict_map,
-              model_params_generator):
+              tensor_dict_map, model_params_generator):
     parser = get_basic_parser()
     extra_parser_args_adder(parser)
 

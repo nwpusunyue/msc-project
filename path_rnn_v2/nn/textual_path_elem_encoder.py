@@ -28,16 +28,25 @@ def encode_path_elem(elem_seq, elem_length, embd,
         elem_seq_unstacked = tf.unstack(elem_seq_embd, axis=1)
 
         elem_seq_repr_unstacked = []
+        attn_weights_unstacked = []
 
         for seq, len in zip(elem_seq_unstacked, elem_length_unstacked):
-            output = encoder(seq, len, reuse=tf.AUTO_REUSE, is_eval=is_eval, **seq_encoder_params)
+            output, attn = encoder(seq, len, reuse=tf.AUTO_REUSE, is_eval=is_eval, **seq_encoder_params,
+                                   return_extra=True)
 
             elem_seq_repr_unstacked.append(output)
+            # attn: [batch_size, max_rel_length]
+            attn_weights_unstacked.append(attn)
 
         # [batch_size, max_path_length, repr_dim]
         elem_repr = tf.stack(elem_seq_repr_unstacked, axis=1)
+        if attn_weights_unstacked[0] is not None:
+            # [batch_size, max_path_length, repr_dim]
+            attn_weights = tf.stack(attn_weights_unstacked, axis=1)
+        else:
+            attn_weights = None
 
-    return elem_repr
+    return elem_repr, attn_weights
 
 
 # TEST

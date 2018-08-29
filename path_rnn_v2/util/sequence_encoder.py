@@ -8,7 +8,7 @@ from path_rnn_v2.util.ops import extract_axis_1, replace_val
 
 
 def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', reuse=False, activation=None,
-            dropout=None, is_eval=True, extra_args=None):
+            dropout=None, is_eval=True, extra_args=None, return_extra=False):
     '''
 
     :param sequence: [batch_size, max_sequence_length, input_dim] tensor
@@ -21,11 +21,13 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
     :param dropout: if 0.0 output is passed through a dropout layer
     :param is_eval: whether the tensors are for eval or train => influences dropout
     :param extra_args:
+    :param return_extra: if True, potential extra graph nodes are returned. Eg. attention weights
     :return:
     '''
     if extra_args is None:
         extra_args = {}
-
+    attention_weights = None
+    out = None
     with tf.variable_scope(name, reuse=reuse):
         if module == 'lstm':
             # [batch_size, repr_dim x 2]
@@ -41,7 +43,7 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
             # [batch_size, max_seq_len, repr_dimx x 2]
             out = bi_lstm(repr_dim, sequence, seq_length, last_output=False, **extra_args)
             # [batch_size, repr_dim x 2]
-            out, _ = attend_sequence(out, seq_length, module='additive')
+            out, attention_weights = attend_sequence(out, seq_length, module='additive')
         elif module == 'dense':
             # [batch_size, repr_dim]
             out = tf.layers.dense(tf.reshape(sequence, shape=[-1, sequence.get_shape()[1] * sequence.get_shape()[2]]),
@@ -79,7 +81,10 @@ def encoder(sequence, seq_length, repr_dim=100, module='lstm', name='encoder', r
                 tf.logical_and(tf.greater(dropout, 0.0), tf.logical_not(is_eval)),
                 lambda: tf.nn.dropout(out, 1.0 - dropout, noise_shape=[tf.shape(out)[0], tf.shape(out)[-1]]),
                 lambda: out)
-    return out
+    if return_extra:
+        return out, attention_weights
+    else:
+        return out
 
 
 # RNN Encoders
