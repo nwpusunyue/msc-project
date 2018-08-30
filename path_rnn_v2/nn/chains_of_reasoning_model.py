@@ -1,3 +1,4 @@
+import argparse
 import os
 import pprint
 import time
@@ -18,14 +19,20 @@ from tqdm import tqdm
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--relation',
+                    type=str,
+                    help='Relation type')
 
-def get_dataset(pos_path, neg_path, dev_path):
+
+def get_dataset(pos_path, neg_path, dev_path, test_path):
     pos = pd.read_json(pos_path)
     neg = pd.read_json(neg_path)
     train = pd.concat([pos, neg], axis=0)
     dev = pd.read_json(dev_path)
+    test = pd.read_json(test_path)
 
-    return train.reset_index(), dev
+    return train.reset_index(), dev, test
 
 
 def get_numpy_arrays(embd, rel_paths, target_rel, label, max_path_len=None):
@@ -207,13 +214,17 @@ class ChainsOfReasoningModel(BaseModel):
 
 
 if __name__ == '__main__':
+    args = parser.parse_args()
+    relation = args.relation
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(visible_device_list='0',
                                                       per_process_gpu_memory_fraction=0.33))
-    relation = '_people_person_nationality'
-    train, dev = get_dataset(
-        pos_path='./chains_of_reasoning_data/{}/parsed/positive_matrix.json'.format(relation),
-        neg_path='./chains_of_reasoning_data/{}/parsed/negative_matrix.json'.format(relation),
-        dev_path='./chains_of_reasoning_data/{}/parsed/dev_matrix.json'.format(relation))
+    relation = args.relation
+    path = '/cluster/project2/mr/scimpian/chains_of_reasoning_data'
+    train, dev, test = get_dataset(
+        pos_path='{}/{}/parsed/positive_matrix.json'.format(path, relation),
+        neg_path='{}/{}/parsed/negative_matrix.json'.format(path, relation),
+        dev_path='{}/{}/parsed/dev_matrix.json'.format(path, relation),
+        test_path='{}/{}/parsed/test_matrix.json'.format(path, relation))
 
     relation_vocab = set(chain.from_iterable(list(chain.from_iterable(train['relation_paths']))))
     relation_vocab.add('#UNK')
@@ -241,6 +252,19 @@ if __name__ == '__main__':
                                        'target_relation'],
                                    label=dev['label'],
                                    max_path_len=train_indexed_rel_path.shape[1])
+
+    (test_path_partition,
+     test_path_len,
+     test_indexed_rel_path,
+     test_indexed_target_rel,
+     test_label) = get_numpy_arrays(embd=random_embd,
+                                    rel_paths=test[
+                                        'relation_paths'],
+                                    target_rel=test[
+                                        'target_relation'],
+                                    label=test['label'],
+                                    max_path_len=train_indexed_rel_path.shape[1])
+
     model_params = {
         'max_path_len': train_indexed_rel_path.shape[1],
         'relation_embedder': random_embd,
@@ -252,7 +276,7 @@ if __name__ == '__main__':
         },
         'encoder_params': {
             'repr_dim': embd_dim,
-            'module': 'lstm',
+            'module': 'rnn',
             'activation': None,
             'dropout': None,
             'extra_args': {
@@ -267,13 +291,14 @@ if __name__ == '__main__':
     }
 
     train_params = {
-        'optimizer': tf.train.AdamOptimizer(learning_rate=1e-3),
+        'optimizer': tf.train.AdamOptimizer(),
         'l2': 0.0001,
         'clip_op': None,
         'clip': None
     }
 
     model = ChainsOfReasoningModel(model_params=model_params, train_params=train_params)
+    print(model.train_variables)
     train_batch_generator = PartitionBatchGenerator(partition=train_path_partition,
                                                     label=train_label,
                                                     tensor_dict={
@@ -300,9 +325,18 @@ if __name__ == '__main__':
                                                   },
                                                   batch_size=20,
                                                   permute=False)
+    test_batch_generator = PartitionBatchGenerator(partition=test_path_partition,
+                                                   label=test_label,
+                                                   tensor_dict={
+                                                       'seq_len': test_path_len,
+                                                       'rel_seq': test_indexed_rel_path,
+                                                       'target_rel': test_indexed_target_rel
+                                                   },
+                                                   batch_size=20,
+                                                   permute=False)
 
-    steps = 1000
-    check_period = 50
+    steps = train_batch_generator.batch_count * 150
+    check_period = 500
 
     with tf.train.MonitoredTrainingSession(config=config) as sess:
         summ_writer = tf.summary.FileWriter('./chains_of_reasoning_logs/run_{}_{}'.format(relation, time.time()))
@@ -332,3 +366,18 @@ if __name__ == '__main__':
                 metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
                                           summ_collection='summary_test')
                 print('Dev loss: {} Dev acc: {} Dev ap: {}'.format(metrics[0], metrics[1], ap))
+
+                test_prob = np.array([])
+                test_label = np.array([])
+
+                for j in range(test_batch_generator.batch_count):
+                    batch = test_batch_generator.get_batch()
+                    model.eval_step(batch, sess)
+                    test_prob = np.concatenate((test_prob, model.predict_step(batch, sess)))
+                    test_label = np.concatenate((test_label, batch['label']))
+
+                ap = average_precision_score(y_true=test_label, y_score=test_prob)
+
+                metrics = model.eval_step(batch=None, sess=sess, reset=True, summ_writer=summ_writer,
+                                          summ_collection='summary_test')
+                print('Test loss: {} Test acc: {} Test ap: {}'.format(metrics[0], metrics[1], ap))
